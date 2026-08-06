@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+
+  :root,
+  .theme-1 {
+    /* Theme 1: Light Daytime Mode (High Contrast White & Deep Navy Blue) */
+    --background: 210 20% 98%;
+    --foreground: 222 50% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 50% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 50% 9%;
+    --primary: 234 70% 25%;
+    /* Deep High-Contrast Navy */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 222 50% 9%;
+    --muted: 210 40% 94%;
+    --muted-foreground: 215 25% 35%;
+    /* Darker Muted Gray for Daytime Direct Light */
+    --accent: 45 100% 48%;
+    /* High-Contrast Warm Amber */
+    --accent-foreground: 222 50% 9%;
+    --destructive: 0 84.2% 55%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 84%;
+    /* Sharper Border Lines */
+    --input: 214.3 31.8% 84%;
+    --ring: 234 70% 25%;
+    --radius: 0.75rem;
+    --chart-1: 234 70% 25%;
+    --chart-2: 45 100% 48%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --sidebar-background: 234 70% 16%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 234 70% 25%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 234 70% 35%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 234 70% 22%;
+    --sidebar-ring: 45 100% 48%;
+  }
+
+  .theme-2 {
+    /* Theme 2: Midnight Navy (Dark mode) */
+    --background: 222 47% 8%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 12%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 12%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 234 66% 35%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 222 47% 16%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 222 47% 16%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 38 92% 50%;
+    /* Golden Orange */
+    --accent-foreground: 222 47% 8%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 222 47% 18%;
+    --input: 222 47% 18%;
+    --ring: 38 92% 50%;
+    --sidebar-background: 222 47% 6%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 234 66% 35%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 234 66% 45%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 47% 10%;
+    --sidebar-ring: 38 92% 50%;
+  }
+
+  .theme-3 {
+    /* Theme 3: Pitch Black (High Contrast Dark Mode) */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 96%;
+    --card: 0 0% 6%;
+    --card-foreground: 0 0% 96%;
+    --popover: 0 0% 6%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 0 0% 16%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 180 100% 50%;
+    /* Neon Electric Cyan */
+    --accent-foreground: 0 0% 0%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 180 100% 50%;
+    --sidebar-background: 0 0% 3%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-primary: 0 0% 16%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 8%;
+    --sidebar-ring: 180 100% 50%;
+  }
+
+  .theme-4 {
+    /* Theme 4: Forest Emerald (Dark Green Mode) */
+    --background: 142 40% 6%;
+    --foreground: 120 40% 98%;
+    --card: 142 35% 11%;
+    --card-foreground: 120 40% 98%;
+    --popover: 142 35% 11%;
+    --popover-foreground: 120 40% 98%;
+    --primary: 142 45% 22%;
+    --primary-foreground: 120 40% 98%;
+    --secondary: 142 35% 15%;
+    --secondary-foreground: 120 40% 98%;
+    --muted: 142 35% 15%;
+    --muted-foreground: 142 20% 65%;
+    --accent: 47 95% 55%;
+    /* Warm Gold */
+    --accent-foreground: 142 40% 6%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 120 40% 98%;
+    --border: 142 30% 18%;
+    --input: 142 30% 18%;
+    --ring: 47 95% 55%;
+    --sidebar-background: 142 40% 5%;
+    --sidebar-foreground: 120 40% 98%;
+    --sidebar-primary: 142 35% 11%;
+    --sidebar-primary-foreground: 120 40% 98%;
+    --sidebar-accent: 142 35% 18%;
+    --sidebar-accent-foreground: 120 40% 98%;
+    --sidebar-border: 142 30% 10%;
+    --sidebar-ring: 47 95% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+  }
+}
+
+/* Dynamic theme overrides to fix hardcoded layout classes and enhance readability */
+.theme-2,
+.theme-3,
+.theme-4 {
+  color-scheme: dark;
+}
+
+.theme-2 .bg-white,
+.theme-3 .bg-white,
+.theme-4 .bg-white {
+  background-color: hsl(var(--card)) !important;
+}
+
+.theme-2 .bg-slate-50,
+.theme-2 .bg-slate-100,
+.theme-2 .bg-slate-50\/50,
+.theme-3 .bg-slate-50,
+.theme-3 .bg-slate-100,
+.theme-3 .bg-slate-50\/50,
+.theme-4 .bg-slate-50,
+.theme-4 .bg-slate-100,
+.theme-4 .bg-slate-50\/50 {
+  background-color: hsl(var(--secondary)) !important;
+}
+
+.theme-2 .text-slate-900,
+.theme-2 .text-slate-800,
+.theme-2 .text-slate-700,
+.theme-2 .text-slate-600,
+.theme-2 .text-slate-500,
+.theme-3 .text-slate-900,
+.theme-3 .text-slate-800,
+.theme-3 .text-slate-700,
+.theme-3 .text-slate-600,
+.theme-3 .text-slate-500,
+.theme-4 .text-slate-900,
+.theme-4 .text-slate-800,
+.theme-4 .text-slate-700,
+.theme-4 .text-slate-600,
+.theme-4 .text-slate-500 {
+  color: hsl(var(--foreground)) !important;
+}
+
+.theme-2 .text-primary,
+.theme-3 .text-primary,
+.theme-4 .text-primary {
+  color: hsl(var(--accent)) !important;
+}
+
+.theme-2 .border-slate-200,
+.theme-2 .border-slate-100,
+.theme-3 .border-slate-200,
+.theme-3 .border-slate-100,
+.theme-4 .border-slate-200,
+.theme-4 .border-slate-100 {
+  border-color: hsl(var(--border)) !important;
+}
+
+.theme-2 .bg-slate-50\/50,
+.theme-3 .bg-slate-50\/50,
+.theme-4 .bg-slate-50\/50 {
+  background-color: transparent !important;
+}

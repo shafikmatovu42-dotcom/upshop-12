@@ -1,0 +1,89 @@
+{
+  "users": [
+    {
+      "id": "9ded08e8-c61f-4586-9cca-842103cdb834",
+      "email": "shafikmatovu42@gmail.com",
+      "passwordHash": "$2a$10$7hi00GbJk43DfsgFyHIaC.YscHj99SBwT03OjoDD8Ar5EPATMCyEG",
+      "fullName": "Matovu Shafik",
+      "businessName": "frix.inco",
+      "location": "noway",
+      "currentWeek": "Week 1",
+      "photoUrl": "https://picsum.photos/seed/agent/200/200",
+      "createdAt": "2026-07-11T11:18:46.625Z",
+      "updatedAt": "2026-07-11T12:53:29.481Z"
+    }
+  ],
+  "products": [
+    {
+      "id": "002e0f4e-360c-466f-b9c0-a7f80e2e3598",
+      "userId": "9ded08e8-c61f-4586-9cca-842103cdb834",
+      "name": "B20 benz",
+      "category": "flame",
+      "price": 40000,
+      "warehouseStock": 0,
+      "shopStock": 2,
+      "minStockLevel": 5,
+      "imageUrl": "https://picsum.photos/seed/placeholder/400/400",
+      "createdAt": "2026-07-11T11:22:47.686Z",
+      "updatedAt": "2026-07-11T11:22:47.686Z"
+    },
+    {
+      "id": "2b86d15b-b718-4363-b534-295395e9f81c",
+      "userId": "9ded08e8-c61f-4586-9cca-842103cdb834",
+      "name": "mp3",
+      "category": "radio",
+      "price": 50000,
+      "warehouseStock": 6,
+      "shopStock": 3,
+      "minStockLevel": 5,
+      "imageUrl": "https://picsum.photos/seed/placeholder/400/400",
+      "createdAt": "2026-07-11T12:29:12.071Z",
+      "updatedAt": "2026-07-11T12:43:56.060Z"
+    }
+  ],
+  "movements": [
+    {
+      "id": "aa63783a-7a6f-4752-b799-8cc37da2c0c4",
+      "userId": "9ded08e8-c61f-4586-9cca-842103cdb834",
+      "productName": "B20 benz",
+      "quantity": 2,
+      "type": "collection",
+      "destination": "shop",
+      "week": "Week 1",
+      "timestamp": "2026-07-11T11:22:48.178Z",
+      "createdAt": "2026-07-11T11:22:48.178Z"
+    },
+    {
+      "id": "17ca8534-2372-4efc-8faf-e16cb23cca54",
+      "userId": "9ded08e8-c61f-4586-9cca-842103cdb834",
+      "productName": "mp3",
+      "quantity": 10,
+      "type": "collection",
+      "destination": "warehouse",
+      "week": "Week 1",
+      "timestamp": "2026-07-11T12:29:12.558Z",
+      "createdAt": "2026-07-11T12:29:12.558Z"
+    },
+    {
+      "id": "cc162b4b-abf3-4cdb-8b6c-139a2061503c",
+      "userId": "9ded08e8-c61f-4586-9cca-842103cdb834",
+      "productName": "mp3",
+      "quantity": 4,
+      "type": "transfer",
+      "destination": "shop",
+      "week": "Week 1",
+      "timestamp": "2026-07-11T12:29:34.547Z",
+      "createdAt": "2026-07-11T12:29:34.547Z"
+    }
+  ],
+  "sales": [
+    {
+      "id": "6014b48a-2dd4-4d5e-89d3-8be8ec488175",
+      "userId": "9ded08e8-c61f-4586-9cca-842103cdb834",
+      "week": "Week 1",
+      "total": 50000,
+      "timestamp": "2026-07-11T12:43:55.302Z",
+      "createdAt": "2026-07-11T12:43:55.302Z"
+    }
+  ]
+}

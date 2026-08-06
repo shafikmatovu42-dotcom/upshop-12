@@ -1,0 +1,94 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user and business details.",
+      "type": "object",
+      "properties": {
+        "businessName": { "type": "string" },
+        "location": { "type": "string" },
+        "fullName": { "type": "string" },
+        "photoUrl": { "type": "string", "description": "URL to the agent's profile picture" },
+        "currentWeek": { "type": "string", "description": "The week the business is currently operating in (e.g., 'Week 42')" }
+      },
+      "required": ["businessName", "fullName"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Inventory items.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "warehouseStock": { "type": "number" },
+        "shopStock": { "type": "number" },
+        "minStockLevel": { "type": "number" },
+        "price": { "type": "number" },
+        "imageUrl": { "type": "string", "description": "Product image reference URL" }
+      }
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Transaction records.",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "priceAtSale": { "type": "number" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "credit"] },
+        "week": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "StockMovement": {
+      "title": "Stock Movement",
+      "description": "History of stock transfers or collections.",
+      "type": "object",
+      "properties": {
+        "productName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "type": { "type": "string", "enum": ["transfer", "collection"] },
+        "destination": { "type": "string", "enum": ["shop", "warehouse"] },
+        "week": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "BusinessTarget": {
+      "title": "Business Target",
+      "description": "Financial goals for the business.",
+      "type": "object",
+      "properties": {
+        "week": { "type": "string" },
+        "revenueTarget": { "type": "number" }
+      }
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User business profile settings."
+    },
+    "/users/{userId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Business inventory."
+    },
+    "/users/{userId}/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Transaction logs."
+    },
+    "/users/{userId}/movements/{movementId}": {
+      "schema": "StockMovement",
+      "description": "Inventory history."
+    },
+    "/users/{userId}/targets/{targetId}": {
+      "schema": "BusinessTarget",
+      "description": "Weekly revenue goals."
+    }
+  }
+}

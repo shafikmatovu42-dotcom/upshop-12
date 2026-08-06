@@ -1,0 +1,35 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "agent-avatar",
+      "description": "Default agent profile picture",
+      "imageUrl": "https://picsum.photos/seed/agent/200/200",
+      "imageHint": "man profile"
+    },
+    {
+      "id": "prod-electronics",
+      "description": "Electronics product thumbnail",
+      "imageUrl": "https://picsum.photos/seed/electronics/400/400",
+      "imageHint": "electronics gadget"
+    },
+    {
+      "id": "prod-grocery",
+      "description": "Grocery product thumbnail",
+      "imageUrl": "https://picsum.photos/seed/grocery/400/400",
+      "imageHint": "groceries food"
+    },
+    {
+      "id": "prod-general",
+      "description": "General retail item",
+      "imageUrl": "https://picsum.photos/seed/general/400/400",
+      "imageHint": "retail package"
+    },
+    {
+      "id": "prod-fashion",
+      "description": "Fashion accessory",
+      "imageUrl": "https://picsum.photos/seed/fashion/400/400",
+      "imageHint": "clothing fashion"
+    }
+  ]
+}
