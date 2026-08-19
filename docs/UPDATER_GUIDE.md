@@ -28,6 +28,10 @@ Public key:  dW50cnVzdGVkIGNvbW1lbnQ6IGF1dG9tYXRlZCBwbGFjZWhvbGRlc...
 Open `src-tauri/tauri.conf.json` and insert your generated **Public Key**:
 
 ```json
+"bundle": {
+  "active": true,
+  "createUpdaterArtifacts": true
+},
 "plugins": {
   "updater": {
     "pubkey": "YOUR_PUBLIC_KEY_STRING_HERE",

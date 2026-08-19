@@ -51,4 +51,5 @@ jobs:
           releaseBody: 'Automatic production release of UPshop Management Console v__VERSION__.'
           releaseDraft: false
           prerelease: false
+          includeUpdaterJson: true
           args: ${{ matrix.args }}

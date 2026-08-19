@@ -59,7 +59,12 @@ export function UpdaterDialog() {
       }
     } catch (err: any) {
       console.error("Update check failed:", err)
-      setStatusMessage("Could not check for updates. Please check your internet connection.")
+      const errStr = typeof err === "string" ? err : err?.message || JSON.stringify(err)
+      if (errStr.includes("404") || errStr.toLowerCase().includes("not found") || errStr.includes("Could not fetch")) {
+        setStatusMessage("No update manifest (latest.json) found in GitHub release.")
+      } else {
+        setStatusMessage(`Could not check for updates: ${errStr}`)
+      }
     } finally {
       setChecking(false)
     }
