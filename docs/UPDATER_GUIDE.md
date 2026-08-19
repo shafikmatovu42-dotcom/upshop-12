@@ -22,7 +22,7 @@ Public key:  dW50cnVzdGVkIGNvbW1lbnQ6IGF1dG9tYXRlZCBwbGFjZWhvbGRlc...
 ```
 
 ---
-
+ 
 ## 2. Configuring Public Key in `tauri.conf.json`
 
 Open `src-tauri/tauri.conf.json` and insert your generated **Public Key**:

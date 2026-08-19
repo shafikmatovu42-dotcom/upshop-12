@@ -1413,10 +1413,10 @@ export default function DashboardPage() {
           <Building2 className="h-64 w-64 rotate-12" />
         </div>
 
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+        <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
           <div className="flex flex-col md:flex-row gap-8 items-start md:items-center">
             <div className="relative group">
-              <div className="h-24 w-24 rounded-3xl overflow-hidden border-4 border-white/20 shadow-2xl bg-white/10 backdrop-blur-md">
+              <div className="h-24 w-24 rounded-3xl overflow-hidden border-4 border-white/20 shadow-2xl bg-white/15">
                 <img
                   src={userProfile?.photoUrl || "https://picsum.photos/seed/agent/200/200"}
                   alt="Agent"
@@ -1454,28 +1454,28 @@ export default function DashboardPage() {
                 {userProfile?.businessName || "UPSHOP Enterprise"}
               </h1>
               <div className="flex flex-wrap items-center gap-6 pt-4 text-primary-foreground/90 font-bold">
-                <span className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-xl backdrop-blur-sm">
+                <span className="flex items-center gap-2 bg-white/15 border border-white/10 px-4 py-2 rounded-xl">
                   <MapPin className="h-5 w-5 text-accent" />
                   {userProfile?.location || "No location set"}
                 </span>
-                <span className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-xl backdrop-blur-sm">
+                <span className="flex items-center gap-2 bg-white/15 border border-white/10 px-4 py-2 rounded-xl">
                   <UserIcon className="h-5 w-5 text-accent" />
                   {user?.role === 'agent' ? 'Agent: ' : 'Admin: '}{userProfile?.fullName || "Not identified"}
                 </span>
-                <span className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-xl backdrop-blur-sm font-mono text-xs">
+                <span className="flex items-center gap-2 bg-white/15 border border-white/10 px-4 py-2 rounded-xl font-mono text-xs">
                   <Calendar className="h-5 w-5 text-accent animate-pulse" />
                   📅 {formattedSystemDate} | 🕒 {formattedSystemTime}
                 </span>
               </div>
               {userProfile?.motto && (
-                <p className="mt-4 text-primary-foreground/80 font-bold italic text-sm bg-white/15 px-4 py-2 rounded-xl w-fit backdrop-blur-sm border border-white/10 shadow-sm">
+                <p className="mt-4 text-primary-foreground/80 font-bold italic text-sm bg-white/20 px-4 py-2 rounded-xl w-fit border border-white/15 shadow-sm">
                   “ {userProfile.motto} ”
                 </p>
               )}
             </div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-xl p-6 rounded-2xl border border-white/20 shadow-2xl min-w-[240px]">
+          <div className="bg-white/15 p-6 rounded-2xl border border-white/20 shadow-2xl min-w-[240px] shrink-0">
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center text-primary shadow-inner">

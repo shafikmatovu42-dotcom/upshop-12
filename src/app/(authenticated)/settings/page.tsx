@@ -980,10 +980,25 @@ export default function SettingsPage() {
                             To get your official Gemini API key or access corporate credentials, visit the official UP Corporations application portal:
                           </p>
                           <a 
-                            href="https://up-corp-g8qb7yqg7-us15.vercel.app" 
+                            href="https://todo-app-us15.vercel.app/" 
                             target="_blank" 
                             rel="noreferrer"
-                            className="text-xs font-black text-emerald-700 hover:underline flex items-center gap-1.5 mt-1"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const targetUrl = "https://todo-app-us15.vercel.app/";
+                              if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+                                import('@tauri-apps/api/core').then(({ invoke }) => {
+                                  invoke('open_external_url', { url: targetUrl }).catch(() => {
+                                    window.open(targetUrl, '_blank');
+                                  });
+                                }).catch(() => {
+                                  window.open(targetUrl, '_blank');
+                                });
+                              } else {
+                                window.open(targetUrl, '_blank');
+                              }
+                            }}
+                            className="text-xs font-black text-emerald-700 hover:underline flex items-center gap-1.5 mt-1 cursor-pointer"
                           >
                             🌐 Get API Key from Official App Site ↗
                           </a>

@@ -250,6 +250,69 @@ export async function getDb(): Promise<Database> {
         if (!movementColumnNames.includes('dismissed')) {
           await db.execute('ALTER TABLE movements ADD COLUMN dismissed INTEGER DEFAULT 0');
         }
+        if (!movementColumnNames.includes('buyingPrice')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN buyingPrice REAL DEFAULT 0');
+        }
+        if (!movementColumnNames.includes('sellingPrice')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN sellingPrice REAL DEFAULT 0');
+        }
+        if (!movementColumnNames.includes('unitType')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN unitType TEXT');
+        }
+        if (!movementColumnNames.includes('paymentMode')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN paymentMode TEXT');
+        }
+        if (!movementColumnNames.includes('supplierName')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN supplierName TEXT');
+        }
+        if (!movementColumnNames.includes('supplierContact')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN supplierContact TEXT');
+        }
+        if (!movementColumnNames.includes('totalAmount')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN totalAmount REAL DEFAULT 0');
+        }
+        if (!movementColumnNames.includes('transferredBy')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN transferredBy TEXT');
+        }
+        if (!movementColumnNames.includes('receivedBy')) {
+          await db.execute('ALTER TABLE movements ADD COLUMN receivedBy TEXT');
+        }
+
+        const saleItemColumns = await db.select<any[]>("PRAGMA table_info(sale_items)");
+        const saleItemColumnNames = saleItemColumns.map(c => c.name);
+        if (!saleItemColumnNames.includes('itemPaymentMode')) {
+          await db.execute('ALTER TABLE sale_items ADD COLUMN itemPaymentMode TEXT DEFAULT \'inherit\'');
+        }
+        if (!saleItemColumnNames.includes('sellingUnitType')) {
+          await db.execute('ALTER TABLE sale_items ADD COLUMN sellingUnitType TEXT DEFAULT \'pieces\'');
+        }
+        if (!saleItemColumnNames.includes('boxQty')) {
+          await db.execute('ALTER TABLE sale_items ADD COLUMN boxQty INTEGER DEFAULT 0');
+        }
+        if (!saleItemColumnNames.includes('pieceQty')) {
+          await db.execute('ALTER TABLE sale_items ADD COLUMN pieceQty INTEGER DEFAULT 0');
+        }
+        if (!saleItemColumnNames.includes('boxSellingPrice')) {
+          await db.execute('ALTER TABLE sale_items ADD COLUMN boxSellingPrice REAL DEFAULT 0');
+        }
+
+        const salesColumns = await db.select<any[]>("PRAGMA table_info(sales)");
+        const salesColumnNames = salesColumns.map(c => c.name);
+        if (!salesColumnNames.includes('cashSubtype')) {
+          await db.execute('ALTER TABLE sales ADD COLUMN cashSubtype TEXT DEFAULT \'hard_cash\'');
+        }
+        if (!salesColumnNames.includes('cashAmount')) {
+          await db.execute('ALTER TABLE sales ADD COLUMN cashAmount REAL DEFAULT 0');
+        }
+        if (!salesColumnNames.includes('creditAmount')) {
+          await db.execute('ALTER TABLE sales ADD COLUMN creditAmount REAL DEFAULT 0');
+        }
+
+        const creditorColumns = await db.select<any[]>("PRAGMA table_info(creditors)");
+        const creditorColumnNames = creditorColumns.map(c => c.name);
+        if (!creditorColumnNames.includes('supplierContact')) {
+          await db.execute('ALTER TABLE creditors ADD COLUMN supplierContact TEXT');
+        }
       } catch (err) {
         console.error('Error running table info pragma / column additions:', err);
       }
@@ -548,13 +611,14 @@ export async function saveSale(sale: any, items?: any[]) {
     if (items && Array.isArray(items)) {
       for (const item of items) {
         const itemId = safeRandomUUID();
+        const resolvedName = item.name || item.productName || item.title || 'General Product';
         sale_items.push({
           id: itemId,
           saleId: sale.id,
-          productId: item.id,
-          name: item.name,
-          price: item.customPrice || item.price,
-          quantity: item.quantity,
+          productId: item.id || safeRandomUUID(),
+          name: resolvedName,
+          price: item.customPrice || item.price || 0,
+          quantity: item.quantity || 1,
           itemPaymentMode: item.itemPaymentMode || 'inherit',
           sellingUnitType: item.sellingUnitType || 'pieces',
           boxQty: item.boxQty || 0,
@@ -588,10 +652,11 @@ export async function saveSale(sale: any, items?: any[]) {
   if (items && Array.isArray(items)) {
     for (const item of items) {
       const itemId = safeRandomUUID();
+      const resolvedName = item.name || item.productName || item.title || 'General Product';
       await db.execute(
         `INSERT INTO sale_items (id, saleId, productId, name, price, quantity, itemPaymentMode, sellingUnitType, boxQty, pieceQty, boxSellingPrice) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [itemId, sale.id, item.id, item.name, item.customPrice || item.price, item.quantity, item.itemPaymentMode || 'inherit', item.sellingUnitType || 'pieces', item.boxQty || 0, item.pieceQty || 0, item.boxSellingPrice || 0]
+        [itemId, sale.id, item.id || safeRandomUUID(), resolvedName, item.customPrice || item.price || 0, item.quantity || 1, item.itemPaymentMode || 'inherit', item.sellingUnitType || 'pieces', item.boxQty || 0, item.pieceQty || 0, item.boxSellingPrice || 0]
       );
     }
   }
@@ -737,7 +802,9 @@ export async function getUserSales(userId: string) {
 
     for (const sale of userSales) {
       if (!sale.items || sale.items.length === 0) {
-        sale.items = sale_items.filter(si => si.saleId === sale.id && si.quantity > 0);
+        sale.items = sale_items
+          .filter(si => si.saleId === sale.id && si.quantity > 0)
+          .map(si => ({ ...si, name: si.name || si.productName || 'General Product' }));
       }
       sale.dismissed = !!sale.dismissed;
     }
@@ -746,9 +813,25 @@ export async function getUserSales(userId: string) {
   const db = await getDb();
   const sales = await db.select<any[]>('SELECT * FROM sales WHERE userId = ? ORDER BY timestamp DESC', [userId]);
   
-  for (const sale of sales) {
-    sale.items = await db.select<any[]>('SELECT * FROM sale_items WHERE saleId = ? AND quantity > 0', [sale.id]);
-    sale.dismissed = !!sale.dismissed;
+  if (sales.length > 0) {
+    const allSaleItems = await db.select<any[]>(
+      `SELECT si.* FROM sale_items si JOIN sales s ON si.saleId = s.id WHERE s.userId = ? AND si.quantity > 0`,
+      [userId]
+    );
+    const itemsMap = new Map<string, any[]>();
+    for (const item of allSaleItems) {
+      if (!itemsMap.has(item.saleId)) {
+        itemsMap.set(item.saleId, []);
+      }
+      itemsMap.get(item.saleId)!.push({
+        ...item,
+        name: item.name || item.productName || 'General Product'
+      });
+    }
+    for (const sale of sales) {
+      sale.items = itemsMap.get(sale.id) || [];
+      sale.dismissed = !!sale.dismissed;
+    }
   }
   return sales;
 }

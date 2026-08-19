@@ -1193,6 +1193,18 @@ export default function SignupPage() {
                   <ArrowLeft className="h-4 w-4 text-cyan-400" /> {step === 1 ? "Welcome Intro" : "Back"}
                 </Button>
 
+                {step > 1 && step < 5 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setStep(prev => prev + 1)}
+                    className="h-11 px-4 bg-slate-900/60 hover:bg-slate-800 text-cyan-300 border-cyan-500/30 font-bold rounded-xl text-xs hover:border-cyan-400"
+                    title="Skip this setup step"
+                  >
+                    Skip Step →
+                  </Button>
+                )}
+
                 <Link href="/login" className="sm:hidden">
                   <Button variant="ghost" size="sm" className="text-xs text-cyan-300 hover:text-white">
                     Existing Account? Sign In

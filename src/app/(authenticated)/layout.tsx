@@ -183,7 +183,7 @@ export default function AuthenticatedLayout({
       <div className="flex min-h-screen w-full bg-background">
         <AppSidebar />
         <SidebarInset className="flex flex-col">
-          <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-2 border-b bg-card px-4 shadow-sm">
+          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b bg-card px-4 shadow-sm">
             <SidebarTrigger className="-ml-1" />
             <SidebarTrigger className="hidden" />
             <Separator orientation="vertical" className="mr-2 h-4" />
