@@ -45,6 +45,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, getPeriodFromTimestamp } from "@/lib/utils"
+import { getActiveRecordingDate } from "@/lib/backdate-utils"
 
 const COMMON_CATEGORIES = [
   "General",
@@ -77,15 +78,27 @@ export default function StoreManagementPage() {
   const [transferUnitType, setTransferUnitType] = useState<"pieces" | "boxes" | "boxes_and_pieces">("pieces")
   const [transferBoxQty, setTransferBoxQty] = useState("")
   const [transferPcsPerBox, setTransferPcsPerBox] = useState("12")
-  const [transferLoosePcs, setTransferLoosePcs] = useState("0")
+  const [transferLoosePcs, setTransferLoosePcs] = useState("")
   const [transferredBy, setTransferredBy] = useState("")
+  const [transferType, setTransferType] = useState<string | null>(null)
 
   // Received products / intake state
   const [partners, setPartners] = useState<any[]>([])
   const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false)
   const [isIntakeDropdownOpen, setIsIntakeDropdownOpen] = useState(false)
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false)
+  const [showAddTypeModal, setShowAddTypeModal] = useState(false)
+  const [newTypeData, setNewTypeData] = useState({
+    productName: "",
+    typeName: "",
+    buyingPrice: "",
+    price: "",
+    warehouseStock: "0",
+    shopStock: "0"
+  })
   const [intakeData, setIntakeData] = useState({ 
     productName: "", 
+    typeName: "Standard",
     buyingPrice: "",
     price: "", // Selling price
     boxBuyingPrice: "",
@@ -94,7 +107,7 @@ export default function StoreManagementPage() {
     qty: "", 
     boxQty: "",
     piecesPerBox: "12",
-    extraPieces: "0",
+    extraPieces: "",
     paymentMode: "cash", // "cash" | "mobile_money" | "credit"
     mobileMoneyContact: "",
     paymentDays: "14",
@@ -179,11 +192,20 @@ export default function StoreManagementPage() {
     return products.find(p => p.id === selectedProduct)
   }, [products, selectedProduct])
 
+  const transferTypesForSelected = useMemo(() => {
+    if (!selectedProductObj) return ['Standard']
+    const nameLower = selectedProductObj.name.trim().toLowerCase()
+    const matching = products.filter(p => p.name.trim().toLowerCase() === nameLower)
+    const types = matching.map(p => p.type || 'Standard').filter(Boolean)
+    return Array.from(new Set(['Standard', ...types]))
+  }, [products, selectedProductObj])
+
   const filteredTransferProducts = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     return products.filter(p => 
       p.name.toLowerCase().includes(q) ||
-      (p.category && p.category.toLowerCase().includes(q))
+      (p.category && p.category.toLowerCase().includes(q)) ||
+      (p.type && p.type.toLowerCase().includes(q))
     )
   }, [products, searchQuery])
 
@@ -192,8 +214,17 @@ export default function StoreManagementPage() {
     const q = intakeData.productName.toLowerCase().trim()
     return products.filter(p => 
       p.name.toLowerCase().includes(q) ||
-      (p.category && p.category.toLowerCase().includes(q))
+      (p.category && p.category.toLowerCase().includes(q)) ||
+      (p.type && p.type.toLowerCase().includes(q))
     )
+  }, [products, intakeData.productName])
+
+  const existingTypesForProduct = useMemo(() => {
+    if (!intakeData.productName.trim()) return ["Standard"]
+    const nameLower = intakeData.productName.trim().toLowerCase()
+    const matching = products.filter(p => p.name.trim().toLowerCase() === nameLower)
+    const types = matching.map(p => p.type || "Standard").filter(Boolean)
+    return Array.from(new Set(["Standard", ...types]))
   }, [products, intakeData.productName])
 
   const filteredSupplierPartners = useMemo(() => {
@@ -218,6 +249,55 @@ export default function StoreManagementPage() {
       : Array.from({ length: 52 }, (_, i) => `Week ${i + 1}`)
   }, [userProfile?.operationPeriodMode])
 
+  const handleSaveNewType = async () => {
+    const nameToUse = (newTypeData.productName || intakeData.productName).trim()
+    const typeToUse = newTypeData.typeName.trim()
+    if (!nameToUse || !typeToUse) {
+      toast({ variant: "destructive", title: "Missing Information", description: "Product Name and Type Name are required." })
+      return
+    }
+
+    try {
+      const res = await fetch('/api/product-types', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: nameToUse,
+          category: intakeData.category || "General",
+          type: typeToUse,
+          buyingPrice: Number(newTypeData.buyingPrice || 0),
+          price: Number(newTypeData.price || 0),
+          warehouseStock: Number(newTypeData.warehouseStock || 0),
+          shopStock: Number(newTypeData.shopStock || 0)
+        })
+      })
+
+      if (res.ok) {
+        const created = await res.json()
+        toast({ title: "New Product Type Added", description: `Added type "${typeToUse}" for "${nameToUse}".` })
+        setShowAddTypeModal(false)
+        
+        const updatedProducts = await fetch('/api/products', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).then(r => r.json())
+        setProducts(updatedProducts)
+
+        setIntakeData(prev => ({
+          ...prev,
+          productName: nameToUse,
+          typeName: typeToUse,
+          buyingPrice: String(created.buyingPrice || 0),
+          price: String(created.price || 0)
+        }))
+      }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error", description: "Could not add new product type." })
+    }
+  }
+
   // Transfer History Movements (Transfers only: type === 'transfer')
   const filteredTransferMovements = useMemo(() => {
     const query = historySearchQuery.trim().toLowerCase()
@@ -232,6 +312,7 @@ export default function StoreManagementPage() {
       if (query) {
         const matchesSearch = 
           (m.productName && m.productName.toLowerCase().includes(query)) ||
+          (m.typeName && m.typeName.toLowerCase().includes(query)) ||
           (m.destination && m.destination.toLowerCase().includes(query)) ||
           (m.transferredBy && m.transferredBy.toLowerCase().includes(query))
         if (!matchesSearch) return false
@@ -299,6 +380,7 @@ export default function StoreManagementPage() {
       if (query) {
         const matchesSearch = 
           (m.productName && m.productName.toLowerCase().includes(query)) ||
+          (m.typeName && m.typeName.toLowerCase().includes(query)) ||
           (m.supplierName && m.supplierName.toLowerCase().includes(query)) ||
           (m.destination && m.destination.toLowerCase().includes(query)) ||
           (m.paymentMode && m.paymentMode.toLowerCase().includes(query)) ||
@@ -440,11 +522,13 @@ export default function StoreManagementPage() {
         },
         body: JSON.stringify({
           productName: product.name,
+          typeName: (transferType || product.type || 'Standard'),
           quantity: qty,
           type: "transfer",
           destination: targetDestination,
           week: userProfile.currentWeek,
-          transferredBy: transferredBy.trim() || userProfile?.fullName || 'System'
+          transferredBy: transferredBy.trim() || userProfile?.fullName || 'System',
+          timestamp: getActiveRecordingDate().toISOString()
         })
       })
 
@@ -474,7 +558,7 @@ export default function StoreManagementPage() {
 
       const fromLabel = transferDirection === 'whse-to-shop' ? 'Warehouse' : 'Shop Floor'
       const toLabel = transferDirection === 'whse-to-shop' ? 'Shop Floor' : 'Warehouse'
-      toast({ title: "Transfer Successful", description: `Moved ${qty} item(s) of ${product.name} from ${fromLabel} to ${toLabel}` })
+      toast({ title: "Transfer Successful", description: `Moved ${qty} item(s) of ${product.name} (${product.type || 'Standard'}) from ${fromLabel} to ${toLabel}` })
       setTransferAmount("")
       setTransferBoxQty("")
       setTransferLoosePcs("0")
@@ -515,10 +599,12 @@ export default function StoreManagementPage() {
     try {
       const intakeName = intakeData.productName.trim().toLowerCase()
       const intakeCategory = (intakeData.category || "General").trim().toLowerCase()
+      const intakeType = (intakeData.typeName || "Standard").trim().toLowerCase()
 
       const existingProduct = products.find(p => 
         p.name.trim().toLowerCase() === intakeName && 
-        (p.category || "General").trim().toLowerCase() === intakeCategory
+        (p.category || "General").trim().toLowerCase() === intakeCategory &&
+        (p.type || "Standard").trim().toLowerCase() === intakeType
       )
       
       if (!existingProduct) {
@@ -532,6 +618,7 @@ export default function StoreManagementPage() {
           body: JSON.stringify({
             name: intakeData.productName.trim(),
             category: intakeData.category || "General",
+            type: intakeData.typeName.trim() || "Standard",
             buyingPrice: pieceBuyingPrice,
             price: pieceSellingPrice > 0 ? pieceSellingPrice : pieceBuyingPrice,
             boxBuyingPrice: boxBuyingPrice,
@@ -553,6 +640,7 @@ export default function StoreManagementPage() {
           },
           body: JSON.stringify({
             category: intakeData.category || existingProduct.category,
+            type: intakeData.typeName.trim() || existingProduct.type || "Standard",
             buyingPrice: pieceBuyingPrice > 0 ? pieceBuyingPrice : existingProduct.buyingPrice,
             price: pieceSellingPrice > 0 ? pieceSellingPrice : existingProduct.price,
             boxBuyingPrice: boxBuyingPrice > 0 ? boxBuyingPrice : existingProduct.boxBuyingPrice,
@@ -575,6 +663,7 @@ export default function StoreManagementPage() {
         },
         body: JSON.stringify({
           productName: intakeData.productName.trim(),
+          typeName: intakeData.typeName.trim() || "Standard",
           quantity: qty,
           type: "collection",
           destination: intakeData.destination,
@@ -587,7 +676,8 @@ export default function StoreManagementPage() {
           supplierContact: intakeData.supplierContact,
           totalAmount: totalCost,
           receivedBy: (intakeData.receivedBy || "").trim() || userProfile?.fullName || 'System',
-          expiryDate: intakeData.expiryDate || null
+          expiryDate: intakeData.expiryDate || null,
+          timestamp: getActiveRecordingDate().toISOString()
         })
       })
 
@@ -607,6 +697,7 @@ export default function StoreManagementPage() {
             supplierName: intakeData.supplierName || "General Supplier",
             supplierContact: intakeData.supplierContact || "",
             productName: intakeData.productName.trim(),
+            typeName: intakeData.typeName.trim() || "Standard",
             quantity: qty,
             unitType: intakeData.unitType,
             buyingPrice: pieceBuyingPrice,
@@ -632,9 +723,10 @@ export default function StoreManagementPage() {
       window.dispatchEvent(new Event("upshop_data_updated"))
 
       const destName = intakeData.destination === "warehouse" ? "Warehouse" : "Shop Floor"
-      toast({ title: "Purchase Logged", description: `Added ${qty} items (${intakeData.unitType}) of ${intakeData.productName} to ${destName} via ${intakeData.paymentMode.toUpperCase()}` })
+      toast({ title: "Purchase Logged", description: `Added ${qty} items (${intakeData.unitType}) of ${intakeData.productName} (${intakeData.typeName || "Standard"}) to ${destName} via ${intakeData.paymentMode.toUpperCase()}` })
       setIntakeData({ 
         productName: "", 
+        typeName: "Standard",
         buyingPrice: "",
         price: "",
         boxBuyingPrice: "",
@@ -677,6 +769,7 @@ export default function StoreManagementPage() {
     setIntakeData(prev => ({
       ...prev,
       productName: p.name,
+      typeName: p.type || "Standard",
       buyingPrice: String(p.buyingPrice || p.price || 0),
       price: String(p.price || 0),
       boxBuyingPrice: String(p.boxBuyingPrice || (p.buyingPrice ? p.buyingPrice * pcsPerBox : 0)),
@@ -687,6 +780,7 @@ export default function StoreManagementPage() {
       expiryDate: p.expiryDate || ""
     }))
     setIsIntakeDropdownOpen(false)
+    setIsTypeDropdownOpen(false)
   }
 
   const selectSupplierPartner = (partner: any) => {
@@ -867,9 +961,18 @@ export default function StoreManagementPage() {
                       <span className="font-bold text-slate-800 dark:text-slate-200">{selectedProductObj.name}</span>
                       <Badge variant="secondary" className="text-[10px] font-bold py-0.5 px-2 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">{selectedProductObj.category}</Badge>
                     </div>
-                    <span className={cn("font-bold text-sm", currentAvailableStock > 0 ? "text-emerald-600" : "text-rose-600")}>
-                      {currentAvailableStock} unit(s)
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <select value={transferType ?? (selectedProductObj.type || 'Standard')} onChange={(e) => setTransferType(e.target.value)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold">
+                          {transferTypesForSelected.map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <span className={cn("font-bold text-sm", currentAvailableStock > 0 ? "text-emerald-600" : "text-rose-600")}>
+                        {currentAvailableStock} unit(s)
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -908,6 +1011,7 @@ export default function StoreManagementPage() {
                       min="1"
                       value={transferAmount} 
                       onChange={(e) => setTransferAmount(e.target.value)} 
+                      onFocus={(e) => e.target.select()}
                       className="h-11 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-base font-bold" 
                       placeholder="0" 
                     />
@@ -923,6 +1027,7 @@ export default function StoreManagementPage() {
                         min="1"
                         value={transferBoxQty}
                         onChange={(e) => setTransferBoxQty(e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         placeholder="e.g. 2 boxes"
                         className="h-10 text-xs font-bold bg-white dark:bg-slate-800"
                       />
@@ -934,6 +1039,7 @@ export default function StoreManagementPage() {
                         min="1"
                         value={transferPcsPerBox}
                         onChange={(e) => setTransferPcsPerBox(e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         placeholder="e.g. 12"
                         className="h-10 text-xs font-bold bg-white dark:bg-slate-800"
                       />
@@ -950,6 +1056,7 @@ export default function StoreManagementPage() {
                         min="0"
                         value={transferBoxQty}
                         onChange={(e) => setTransferBoxQty(e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         placeholder="e.g. 1"
                         className="h-10 text-xs font-bold bg-white dark:bg-slate-800"
                       />
@@ -961,6 +1068,7 @@ export default function StoreManagementPage() {
                         min="1"
                         value={transferPcsPerBox}
                         onChange={(e) => setTransferPcsPerBox(e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         placeholder="e.g. 12"
                         className="h-10 text-xs font-bold bg-white dark:bg-slate-800"
                       />
@@ -972,6 +1080,7 @@ export default function StoreManagementPage() {
                         min="0"
                         value={transferLoosePcs}
                         onChange={(e) => setTransferLoosePcs(e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         placeholder="e.g. 4"
                         className="h-10 text-xs font-bold bg-white dark:bg-slate-800"
                       />
@@ -1029,18 +1138,88 @@ export default function StoreManagementPage() {
                   {isIntakeDropdownOpen && filteredIntakeProducts.length > 0 && (
                     <Card className="absolute z-50 w-full mt-1 max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl rounded-lg">
                       <CardContent className="p-1 divide-y divide-slate-100 dark:divide-slate-700">
-                        <div className="p-2 text-[10px] font-bold uppercase text-slate-400">Select Existing Product (Auto-fills prices & category)</div>
+                        <div className="p-2 text-[10px] font-bold uppercase text-slate-400">Select Existing Product (Auto-fills details & type)</div>
                         {filteredIntakeProducts.map(p => (
                           <div 
                             key={p.id}
                             onClick={() => selectExistingIntakeProduct(p)}
                             className="p-2.5 text-sm hover:bg-amber-50 dark:hover:bg-amber-950/40 cursor-pointer rounded flex justify-between items-center"
                           >
-                            <span className="font-medium">{p.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{p.name}</span>
+                              <Badge variant="secondary" className="text-[10px] font-bold text-primary bg-primary/10">{p.type || "Standard"}</Badge>
+                            </div>
                             <div className="flex items-center gap-2 text-xs">
                               <Badge variant="outline" className="text-slate-500">{p.category}</Badge>
                               <span className="font-mono font-bold text-amber-700 dark:text-amber-400">Buying: Shs {(p.buyingPrice || p.price)?.toLocaleString()}</span>
                             </div>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </div>
+
+              {/* Product Type Input Element with Suggestions & [+ Add New Type] Inspector Modal Button */}
+              <div className="space-y-2 relative">
+                <div className="flex items-center justify-between">
+                  <Label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Tag className="h-4 w-4 text-primary" /> Product Type / Variation
+                  </Label>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      setNewTypeData({
+                        productName: intakeData.productName,
+                        typeName: "",
+                        buyingPrice: intakeData.buyingPrice || "",
+                        price: intakeData.price || "",
+                        warehouseStock: "0",
+                        shopStock: "0"
+                      })
+                      setShowAddTypeModal(true)
+                    }}
+                    className="h-7 text-xs font-bold text-primary border-primary/30 hover:bg-primary/10 gap-1"
+                  >
+                    <PlusCircle className="h-3.5 w-3.5" /> + Add New Type
+                  </Button>
+                </div>
+                <div className="relative">
+                  <Input 
+                    value={intakeData.typeName} 
+                    onChange={(e) => {
+                      setIntakeData({ ...intakeData, typeName: e.target.value })
+                      setIsTypeDropdownOpen(true)
+                    }} 
+                    onFocus={() => setIsTypeDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setIsTypeDropdownOpen(false), 200)}
+                    className="h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-primary" 
+                    placeholder="e.g. Standard, Pro, Hardcover..." 
+                  />
+
+                  {isTypeDropdownOpen && existingTypesForProduct.length > 0 && (
+                    <Card className="absolute z-50 w-full mt-1 max-h-44 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl rounded-lg">
+                      <CardContent className="p-1 divide-y divide-slate-100 dark:divide-slate-700">
+                        <div className="p-2 text-[10px] font-bold uppercase text-slate-400">Existing Types for &quot;{intakeData.productName || "this product"}&quot;</div>
+                        {existingTypesForProduct.map(tName => (
+                          <div 
+                            key={tName}
+                            onClick={() => {
+                              const matched = products.find(p => p.name.trim().toLowerCase() === intakeData.productName.trim().toLowerCase() && (p.type || "Standard").trim().toLowerCase() === tName.toLowerCase())
+                              if (matched) {
+                                selectExistingIntakeProduct(matched)
+                              } else {
+                                setIntakeData(prev => ({ ...prev, typeName: tName }))
+                              }
+                              setIsTypeDropdownOpen(false)
+                            }}
+                            className="p-2.5 text-sm hover:bg-amber-50 dark:hover:bg-amber-950/40 cursor-pointer rounded flex justify-between items-center"
+                          >
+                            <span className="font-bold text-primary">{tName}</span>
+                            <Badge variant="outline" className="text-[10px]">Select Type</Badge>
                           </div>
                         ))}
                       </CardContent>
@@ -1164,6 +1343,7 @@ export default function StoreManagementPage() {
                         type="number" 
                         value={intakeData.boxBuyingPrice} 
                         onChange={(e) => setIntakeData({...intakeData, boxBuyingPrice: e.target.value})} 
+                        onFocus={(e) => e.target.select()}
                         className="h-10 text-xs font-mono font-bold text-amber-700 bg-white dark:bg-slate-800" 
                         placeholder="e.g. 50,000 / box" 
                       />
@@ -1174,6 +1354,7 @@ export default function StoreManagementPage() {
                         type="number" 
                         value={intakeData.boxSellingPrice} 
                         onChange={(e) => setIntakeData({...intakeData, boxSellingPrice: e.target.value})} 
+                        onFocus={(e) => e.target.select()}
                         className="h-10 text-xs font-mono font-bold text-emerald-700 bg-white dark:bg-slate-800" 
                         placeholder="e.g. 60,000 / box" 
                       />
@@ -1184,6 +1365,7 @@ export default function StoreManagementPage() {
                         type="number" 
                         value={intakeData.buyingPrice} 
                         onChange={(e) => setIntakeData({...intakeData, buyingPrice: e.target.value})} 
+                        onFocus={(e) => e.target.select()}
                         className="h-10 text-xs font-mono font-bold text-amber-700 bg-white dark:bg-slate-800" 
                         placeholder="e.g. 2,000 / piece" 
                       />
@@ -1194,6 +1376,7 @@ export default function StoreManagementPage() {
                         type="number" 
                         value={intakeData.price} 
                         onChange={(e) => setIntakeData({...intakeData, price: e.target.value})} 
+                        onFocus={(e) => e.target.select()}
                         className="h-10 text-xs font-mono font-bold text-emerald-700 bg-white dark:bg-slate-800" 
                         placeholder="e.g. 2,500 / piece" 
                       />
@@ -1208,6 +1391,7 @@ export default function StoreManagementPage() {
                       type="number" 
                       value={intakeData.boxBuyingPrice} 
                       onChange={(e) => setIntakeData({...intakeData, boxBuyingPrice: e.target.value})} 
+                      onFocus={(e) => e.target.select()}
                       className="h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-amber-700 dark:text-amber-400" 
                       placeholder="e.g. 50000 (Cost/Box)" 
                     />
@@ -1218,6 +1402,7 @@ export default function StoreManagementPage() {
                       type="number" 
                       value={intakeData.boxSellingPrice} 
                       onChange={(e) => setIntakeData({...intakeData, boxSellingPrice: e.target.value})} 
+                      onFocus={(e) => e.target.select()}
                       className="h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-emerald-700 dark:text-emerald-400" 
                       placeholder="e.g. 60000 (Retail/Box)" 
                     />
@@ -1231,6 +1416,7 @@ export default function StoreManagementPage() {
                       type="number" 
                       value={intakeData.buyingPrice} 
                       onChange={(e) => setIntakeData({...intakeData, buyingPrice: e.target.value})} 
+                      onFocus={(e) => e.target.select()}
                       className="h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-amber-700 dark:text-amber-400" 
                       placeholder="e.g. 5000 (Cost)" 
                     />
@@ -1241,6 +1427,7 @@ export default function StoreManagementPage() {
                       type="number" 
                       value={intakeData.price} 
                       onChange={(e) => setIntakeData({...intakeData, price: e.target.value})} 
+                      onFocus={(e) => e.target.select()}
                       className="h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-emerald-700 dark:text-emerald-400" 
                       placeholder="e.g. 7000 (Retail)" 
                     />
@@ -1721,6 +1908,99 @@ export default function StoreManagementPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* [+ Add New Type] Inspector Modal */}
+      {showAddTypeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card role="dialog" className="w-full max-w-md border-none shadow-2xl bg-white dark:bg-slate-900 p-6 animate-in zoom-in-95 duration-200">
+            <CardHeader className="p-0 pb-4 border-b">
+              <CardTitle className="text-lg font-bold text-primary flex items-center gap-2">
+                <PlusCircle className="h-5 w-5 text-primary" />
+                Add New Product Type / Variation
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500 font-semibold mt-1">
+                Enter details for new type of &quot;{intakeData.productName || "Product"}&quot;
+              </CardDescription>
+            </CardHeader>
+            <div className="py-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">Product Name *</Label>
+                <Input 
+                  value={newTypeData.productName} 
+                  onChange={(e) => setNewTypeData({ ...newTypeData, productName: e.target.value })}
+                  placeholder="Product Name" 
+                  className="h-10 text-xs font-semibold"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-primary">Type / Variation Name *</Label>
+                <Input 
+                  value={newTypeData.typeName} 
+                  onChange={(e) => setNewTypeData({ ...newTypeData, typeName: e.target.value })}
+                  placeholder="e.g. Standard, Pro, Hardcover, 600W" 
+                  className="h-10 text-xs font-bold text-primary"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Buying Price (Shs)</Label>
+                  <Input 
+                    type="number" 
+                    value={newTypeData.buyingPrice === "0" ? '' : newTypeData.buyingPrice} 
+                    onChange={(e) => setNewTypeData({ ...newTypeData, buyingPrice: e.target.value })}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0" 
+                    className="h-10 text-xs font-mono font-bold text-amber-700 dark:text-amber-400"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Selling Price (Shs)</Label>
+                  <Input 
+                    type="number" 
+                    value={newTypeData.price === "0" ? '' : newTypeData.price} 
+                    onChange={(e) => setNewTypeData({ ...newTypeData, price: e.target.value })}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0" 
+                    className="h-10 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Initial Warehouse Stock</Label>
+                  <Input 
+                    type="number" 
+                    value={newTypeData.warehouseStock === "0" ? '' : newTypeData.warehouseStock} 
+                    onChange={(e) => setNewTypeData({ ...newTypeData, warehouseStock: e.target.value })}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0" 
+                    className="h-10 text-xs font-bold"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Initial Shop Stock</Label>
+                  <Input 
+                    type="number" 
+                    value={newTypeData.shopStock === "0" ? '' : newTypeData.shopStock} 
+                    onChange={(e) => setNewTypeData({ ...newTypeData, shopStock: e.target.value })}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0" 
+                    className="h-10 text-xs font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <Button variant="outline" size="sm" onClick={() => setShowAddTypeModal(false)} className="h-9 font-semibold">
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSaveNewType} className="h-9 bg-primary text-white font-bold px-4">
+                Save Product Type
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

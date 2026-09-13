@@ -37,6 +37,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import { cn, getPeriodFromTimestamp } from "@/lib/utils"
 import { printThermalReceipt } from "@/lib/print-receipt"
+import { getActiveRecordingDate } from "@/lib/backdate-utils"
 import {
   Select,
   SelectContent,
@@ -152,6 +153,48 @@ export default function SalesPage() {
     return (Number(item.quantity) || 0) * (Number(item.customPrice) || 0)
   }
 
+  const getAvailableTypesForItem = (itemName: string) => {
+    if (!itemName) return ["Standard"]
+    const nameLower = itemName.trim().toLowerCase()
+    const matching = products.filter(p => p.name.trim().toLowerCase() === nameLower)
+    const types = matching.map(p => p.type || "Standard").filter(Boolean)
+    return Array.from(new Set(types.length > 0 ? types : ["Standard"]))
+  }
+
+  const changeCartItemType = (cartItemId: string, newType: string) => {
+    const currentItem = cart.find(c => c.id === cartItemId)
+    if (!currentItem) return
+    
+    const matchingProduct = products.find(p => 
+      p.name.trim().toLowerCase() === currentItem.name.trim().toLowerCase() && 
+      (p.type || "Standard").trim().toLowerCase() === newType.trim().toLowerCase()
+    )
+
+    if (matchingProduct) {
+      setCart(cart.map(c => {
+        if (c.id === cartItemId) {
+          const pcsPerBox = matchingProduct.piecesPerBox || 12
+          const boxSellingPrice = matchingProduct.boxSellingPrice || (matchingProduct.price ? matchingProduct.price * pcsPerBox : 0)
+          return {
+            ...c,
+            id: matchingProduct.id,
+            typeName: matchingProduct.type || "Standard",
+            price: matchingProduct.price,
+            customPrice: matchingProduct.price,
+            buyingPrice: matchingProduct.buyingPrice,
+            boxSellingPrice: boxSellingPrice,
+            shopStock: matchingProduct.shopStock,
+            warehouseStock: matchingProduct.warehouseStock,
+            imageUrl: matchingProduct.imageUrl || c.imageUrl
+          }
+        }
+        return c
+      }))
+    } else {
+      setCart(cart.map(c => c.id === cartItemId ? { ...c, typeName: newType } : c))
+    }
+  }
+
   const addToCart = (product: any) => {
     const existing = cart.find(c => c.id === product.id)
     if (existing) {
@@ -161,6 +204,7 @@ export default function SalesPage() {
       const boxSellingPrice = product.boxSellingPrice || (product.price ? product.price * pcsPerBox : 0)
       setCart([...cart, {
         ...product,
+        typeName: product.type || "Standard",
         sellingUnitType: "pieces",
         itemPaymentMode: "inherit", // "inherit" | "cash" | "credit"
         quantity: 1,
@@ -313,7 +357,8 @@ export default function SalesPage() {
           status: effectiveStatus,
           dueDate: calculatedDueDate,
           amountPaid: totalCashAmount,
-          items: cartWithItemModes
+          items: cartWithItemModes,
+          timestamp: getActiveRecordingDate().toISOString()
         })
       })
 
@@ -689,7 +734,10 @@ export default function SalesPage() {
                         </div>
 
                         <CardContent className={cn("flex flex-col", cardSize === 1 ? "p-2" : "p-3")}>
-                          <Badge variant="outline" className="w-fit text-[10px] uppercase font-extrabold tracking-wider text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 py-0.5 px-2 mb-1.5">{item.category}</Badge>
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                            <Badge variant="outline" className="w-fit text-[10px] uppercase font-extrabold tracking-wider text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 py-0.5 px-2">{item.category}</Badge>
+                            <Badge variant="secondary" className="w-fit text-[10px] font-black text-primary bg-primary/10 border border-primary/20 py-0.5 px-2">{item.type || "Standard"}</Badge>
+                          </div>
                           <h3 className={cn("font-extrabold text-slate-950 dark:text-slate-50 truncate", cardSize === 1 ? "text-xs" : cardSize === 2 ? "text-sm" : "text-base")}>{item.name}</h3>
                           <p className={cn("font-black text-blue-900 dark:text-blue-300 font-mono mt-1", cardSize === 1 ? "text-xs" : cardSize === 2 ? "text-sm" : "text-lg")}>
                             Shs {item.price.toLocaleString()}
@@ -755,6 +803,9 @@ export default function SalesPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="font-bold text-sm truncate text-white">{item.name}</p>
+                              <Badge variant="secondary" className="text-[9px] font-bold text-blue-200 bg-blue-500/20 border-blue-400/30 px-1.5 py-0">
+                                {item.typeName || item.type || "Standard"}
+                              </Badge>
                               <Badge variant="outline" className="text-[9px] font-bold text-amber-300 border-amber-400/40 bg-amber-500/10 px-1.5 py-0">
                                 {item.category}
                               </Badge>
@@ -770,6 +821,24 @@ export default function SalesPage() {
                           <button onClick={() => setCart(cart.filter(c => c.id !== item.id))} className="text-white/40 hover:text-rose-400 p-1">
                             <Trash2 className="h-4 w-4" />
                           </button>
+                        </div>
+
+                        {/* PRODUCT TYPE SELECTOR Section */}
+                        <div className="flex items-center justify-between gap-2 p-2 bg-blue-950/40 rounded-lg border border-blue-500/20">
+                          <span className="text-[10px] uppercase font-bold text-blue-300 tracking-wider">PRODUCT TYPE:</span>
+                          <Select
+                            value={item.typeName || item.type || "Standard"}
+                            onValueChange={(v) => changeCartItemType(item.id, v)}
+                          >
+                            <SelectTrigger className="h-6 text-[10px] font-bold w-36 bg-blue-900/60 border-blue-400/40 text-blue-100">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="font-bold text-xs">
+                              {getAvailableTypesForItem(item.name).map(tName => (
+                                <SelectItem key={tName} value={tName}>{tName}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
 
                         {/* SELLING UNIT AND QUANTITIES Section */}

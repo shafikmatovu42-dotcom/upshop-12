@@ -15,6 +15,7 @@ import { ShieldAlert } from "lucide-react"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { useAppVersion } from "@/hooks/use-app-version"
 import { UpdaterDialog } from "@/components/layout/updater-dialog"
+import { getBackdateSettings, setBackdateSettings, formatBackdateDisplay, BackdateSettings } from "@/lib/backdate-utils"
 
 export default function AuthenticatedLayout({
   children,
@@ -29,6 +30,22 @@ export default function AuthenticatedLayout({
 
   const [currentTime, setCurrentTime] = useState("")
   const [isOnline, setIsOnline] = useState(true)
+
+  // Backdate settings state
+  const [backdateSettings, setBackdateState] = useState<BackdateSettings>({ enabled: false, date: "" })
+
+  useEffect(() => {
+    const syncBackdate = () => {
+      setBackdateState(getBackdateSettings())
+    }
+    syncBackdate()
+    window.addEventListener("storage", syncBackdate)
+    window.addEventListener("upshop_backdate_updated", syncBackdate)
+    return () => {
+      window.removeEventListener("storage", syncBackdate)
+      window.removeEventListener("upshop_backdate_updated", syncBackdate)
+    }
+  }, [])
 
   useEffect(() => {
     setIsOnline(navigator.onLine)
@@ -187,9 +204,33 @@ export default function AuthenticatedLayout({
             <SidebarTrigger className="-ml-1" />
             <SidebarTrigger className="hidden" />
             <Separator orientation="vertical" className="mr-2 h-4" />
-            <div className="flex flex-1 items-center justify-between">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">UPshop Console</h2>
-              <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
+            <div className="flex flex-1 items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider shrink-0">UPshop Console</h2>
+              
+              {/* BACKDATED DATA ENTRY WARNING BANNER */}
+              {backdateSettings.enabled && backdateSettings.date && (
+                <div className="flex items-center gap-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white px-4 py-1.5 rounded-full shadow-md animate-pulse border border-red-500 text-xs font-black mx-auto">
+                  <span className="h-2.5 w-2.5 rounded-full bg-white animate-ping shrink-0" />
+                  <span className="tracking-wide font-mono uppercase">
+                    RECORDING DATA FOR DATE: {formatBackdateDisplay(backdateSettings.date)}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      const next = { ...backdateSettings, enabled: false }
+                      setBackdateSettings(next)
+                      setBackdateState(next)
+                    }}
+                    className="h-6 text-[10px] font-extrabold px-3 bg-white text-red-700 hover:bg-slate-100 rounded-full shadow-xs uppercase tracking-wider transition-transform hover:scale-105"
+                  >
+                    Turn Off
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground shrink-0">
                 {isOnline ? (
                   <span className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full border border-emerald-200 font-bold">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />

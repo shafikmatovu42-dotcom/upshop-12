@@ -40,6 +40,7 @@ import { useAuth } from "@/lib/auth-context"
 import { format, parseISO } from "date-fns"
 import { printThermalReceipt } from "@/lib/print-receipt"
 import { getPeriodFromTimestamp } from "@/lib/utils"
+import { getActiveRecordingDate } from "@/lib/backdate-utils"
 
 export default function ReturnsPage() {
   const { token } = useAuth()
@@ -214,7 +215,8 @@ export default function ReturnsPage() {
           amount: refundAmount,
           reason,
           status: returnType === 'outwards' ? 'processed' : status,
-          returnType
+          returnType,
+          timestamp: getActiveRecordingDate().toISOString()
         })
       })
 

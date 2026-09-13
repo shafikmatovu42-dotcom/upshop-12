@@ -38,10 +38,13 @@ import {
   Sparkles,
   Shield,
   ShieldCheck,
-  Lock
+  Lock,
+  History,
+  Clock
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
+import { getBackdateSettings, setBackdateSettings, getPastSevenDaysOptions, formatBackdateDisplay, BackdateSettings } from "@/lib/backdate-utils"
 
 export default function SettingsPage() {
   const { user, token, logout } = useAuth()
@@ -50,14 +53,57 @@ export default function SettingsPage() {
 
   const isAdmin = !user?.role || user?.role === 'admin'
 
-  // Section collapse state
+  // Section collapse state - default is MINIMISED for all sections
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+
+  const isSectionExpanded = (id: string) => collapsedSections[id] === true
 
   const toggleSection = (id: string) => {
     setCollapsedSections(prev => ({
       ...prev,
       [id]: !prev[id]
     }))
+  }
+
+  // Backdate settings state
+  const [backdateConfig, setBackdateConfig] = useState<BackdateSettings>({ enabled: false, date: "" })
+  const pastSevenDays = getPastSevenDaysOptions()
+
+  useEffect(() => {
+    const syncBackdate = () => {
+      setBackdateConfig(getBackdateSettings())
+    }
+    syncBackdate()
+    window.addEventListener("storage", syncBackdate)
+    window.addEventListener("upshop_backdate_updated", syncBackdate)
+    return () => {
+      window.removeEventListener("storage", syncBackdate)
+      window.removeEventListener("upshop_backdate_updated", syncBackdate)
+    }
+  }, [])
+
+  const handleToggleBackdate = (enabled: boolean) => {
+    const next = { ...backdateConfig, enabled }
+    setBackdateSettings(next)
+    setBackdateConfig(next)
+    toast({
+      title: enabled ? "Historical Recording Active" : "Historical Recording Disabled",
+      description: enabled 
+        ? `System will record activities for ${formatBackdateDisplay(next.date)}`
+        : "System reverted to current live timestamp."
+    })
+  }
+
+  const handleSelectBackdateDate = (dateStr: string) => {
+    const next = { ...backdateConfig, date: dateStr }
+    setBackdateSettings(next)
+    setBackdateConfig(next)
+    if (next.enabled) {
+      toast({
+        title: "Recording Date Updated",
+        description: `Activities will now be backdated to ${formatBackdateDisplay(dateStr)}`
+      })
+    }
   }
 
   const [fullName, setFullName] = useState("")
@@ -505,21 +551,21 @@ export default function SettingsPage() {
                 onClick={() => toggleSection('profile')}
                 className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
               >
-                {collapsedSections['profile'] ? (
-                  <>
-                    <ChevronDown className="h-4 w-4 text-slate-600" />
-                    <span>Expand</span>
-                  </>
-                ) : (
+                {isSectionExpanded('profile') ? (
                   <>
                     <ChevronUp className="h-4 w-4 text-slate-600" />
                     <span>Minimise</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 text-slate-600" />
+                    <span>Expand</span>
                   </>
                 )}
               </Button>
             </div>
           </CardHeader>
-          {!collapsedSections['profile'] && (
+          {isSectionExpanded('profile') && (
             <CardContent className="pt-6">
               <form onSubmit={handleSaveProfile} className="space-y-4 max-w-3xl">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -598,6 +644,96 @@ export default function SettingsPage() {
           )}
         </Card>
 
+        {/* 2. Historical Data Recording Mode Card (Backdate Entry) */}
+        <Card className="border-none shadow-lg bg-white overflow-hidden border-l-4 border-l-red-600 w-full">
+          <CardHeader className="bg-slate-50/50 pb-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col">
+                <CardTitle className="text-lg flex items-center gap-2 text-red-700 font-black">
+                  <History className="h-5 w-5 text-red-600 animate-pulse" />
+                  Historical Data Recording Mode (Backdate Entry)
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Record sales, inventory stock transfers, and purchases under a previous date from the last 7 days.
+                </CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => toggleSection('backdate')}
+                className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
+              >
+                {isSectionExpanded('backdate') ? (
+                  <>
+                    <ChevronUp className="h-4 w-4 text-slate-600" />
+                    <span>Minimise</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 text-slate-600" />
+                    <span>Expand</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          {isSectionExpanded('backdate') && (
+            <CardContent className="pt-6 space-y-6">
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm max-w-3xl">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                    Backdated Data Recording Mode
+                    {backdateConfig.enabled ? (
+                      <Badge className="bg-red-600 text-white font-extrabold animate-pulse">ACTIVE</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-slate-500 font-bold">DISABLED</Badge>
+                    )}
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-semibold leading-normal mt-1">
+                    When enabled, all system activities (transactions, sales, stock transfers, intakes) get assigned to the selected historical date instead of current time.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleBackdate(!backdateConfig.enabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    backdateConfig.enabled ? 'bg-red-600' : 'bg-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      backdateConfig.enabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-2 max-w-3xl">
+                <Label htmlFor="backdate-select" className="font-bold text-slate-700">Select Past Recording Date (Last 7 Days)</Label>
+                <Select
+                  value={backdateConfig.date || pastSevenDays[0]?.value}
+                  onValueChange={(val) => handleSelectBackdateDate(val)}
+                >
+                  <SelectTrigger id="backdate-select" className="w-full h-11 border-slate-200 font-bold bg-white text-slate-800 rounded-xl focus:ring-1 focus:ring-red-500 shadow-sm font-mono">
+                    <SelectValue placeholder="Select historical date" />
+                  </SelectTrigger>
+                  <SelectContent className="font-bold font-mono">
+                    {pastSevenDays.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-slate-500 font-medium pt-1">
+                  A warning banner will be displayed in the top header plate while this feature is active. You can turn it off at any time using the header toggle or this switch.
+                </p>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
         {/* 2. System Themes Card */}
         <Card className="border-none shadow-lg bg-white overflow-hidden border-l-4 border-l-emerald-600 w-full">
           <CardHeader className="bg-slate-50/50 pb-4">
@@ -618,21 +754,21 @@ export default function SettingsPage() {
                 onClick={() => toggleSection('theme')}
                 className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
               >
-                {collapsedSections['theme'] ? (
-                  <>
-                    <ChevronDown className="h-4 w-4 text-slate-600" />
-                    <span>Expand</span>
-                  </>
-                ) : (
+                {isSectionExpanded('theme') ? (
                   <>
                     <ChevronUp className="h-4 w-4 text-slate-600" />
                     <span>Minimise</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 text-slate-600" />
+                    <span>Expand</span>
                   </>
                 )}
               </Button>
             </div>
           </CardHeader>
-          {!collapsedSections['theme'] && (
+          {isSectionExpanded('theme') && (
             <CardContent className="pt-6 space-y-4">
               <Label className="font-bold text-slate-700 block">Select Active Interface Style</Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -688,21 +824,21 @@ export default function SettingsPage() {
                 onClick={() => toggleSection('printer')}
                 className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
               >
-                {collapsedSections['printer'] ? (
-                  <>
-                    <ChevronDown className="h-4 w-4 text-slate-600" />
-                    <span>Expand</span>
-                  </>
-                ) : (
+                {isSectionExpanded('printer') ? (
                   <>
                     <ChevronUp className="h-4 w-4 text-slate-600" />
                     <span>Minimise</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 text-slate-600" />
+                    <span>Expand</span>
                   </>
                 )}
               </Button>
             </div>
           </CardHeader>
-          {!collapsedSections['printer'] && (
+          {isSectionExpanded('printer') && (
             <CardContent className="pt-6">
               <form onSubmit={handleSavePrinterSettings} className="space-y-4 max-w-3xl">
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
@@ -860,21 +996,21 @@ export default function SettingsPage() {
                       onClick={() => toggleSection('preferences')}
                       className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
                     >
-                      {collapsedSections['preferences'] ? (
-                        <>
-                          <ChevronDown className="h-4 w-4 text-slate-600" />
-                          <span>Expand</span>
-                        </>
-                      ) : (
+                      {isSectionExpanded('preferences') ? (
                         <>
                           <ChevronUp className="h-4 w-4 text-slate-600" />
                           <span>Minimise</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 text-slate-600" />
+                          <span>Expand</span>
                         </>
                       )}
                     </Button>
                   </div>
                 </CardHeader>
-                {!collapsedSections['preferences'] && (
+                {isSectionExpanded('preferences') && (
                   <CardContent className="pt-6 space-y-6">
                     <div className="space-y-3 max-w-3xl">
                       <Label className="font-bold text-slate-700 block">Operational Period Mode</Label>
@@ -937,21 +1073,21 @@ export default function SettingsPage() {
                       onClick={() => toggleSection('ai_integration')}
                       className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
                     >
-                      {collapsedSections['ai_integration'] ? (
-                        <>
-                          <ChevronDown className="h-4 w-4 text-slate-600" />
-                          <span>Expand</span>
-                        </>
-                      ) : (
+                      {isSectionExpanded('ai_integration') ? (
                         <>
                           <ChevronUp className="h-4 w-4 text-slate-600" />
                           <span>Minimise</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 text-slate-600" />
+                          <span>Expand</span>
                         </>
                       )}
                     </Button>
                   </div>
                 </CardHeader>
-                {!collapsedSections['ai_integration'] && (
+                {isSectionExpanded('ai_integration') && (
                   <CardContent className="pt-6 space-y-6">
                     <div className="grid gap-6 md:grid-cols-2">
                       <div className="space-y-4">
@@ -1051,21 +1187,21 @@ export default function SettingsPage() {
                       onClick={() => toggleSection('privacy_control')}
                       className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
                     >
-                      {collapsedSections['privacy_control'] ? (
-                        <>
-                          <ChevronDown className="h-4 w-4 text-slate-600" />
-                          <span>Expand</span>
-                        </>
-                      ) : (
+                      {isSectionExpanded('privacy_control') ? (
                         <>
                           <ChevronUp className="h-4 w-4 text-slate-600" />
                           <span>Minimise</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 text-slate-600" />
+                          <span>Expand</span>
                         </>
                       )}
                     </Button>
                   </div>
                 </CardHeader>
-                {!collapsedSections['privacy_control'] && (
+                {isSectionExpanded('privacy_control') && (
                   <CardContent className="pt-6 space-y-4">
                     <div className="grid gap-6 md:grid-cols-2">
                       <div className="flex items-center space-x-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
@@ -1122,21 +1258,21 @@ export default function SettingsPage() {
                       onClick={() => toggleSection('reset_period')}
                       className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
                     >
-                      {collapsedSections['reset_period'] ? (
-                        <>
-                          <ChevronDown className="h-4 w-4 text-slate-600" />
-                          <span>Expand</span>
-                        </>
-                      ) : (
+                      {isSectionExpanded('reset_period') ? (
                         <>
                           <ChevronUp className="h-4 w-4 text-slate-600" />
                           <span>Minimise</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 text-slate-600" />
+                          <span>Expand</span>
                         </>
                       )}
                     </Button>
                   </div>
                 </CardHeader>
-                {!collapsedSections['reset_period'] && (
+                {isSectionExpanded('reset_period') && (
                   <CardContent className="pt-6 space-y-4">
                     <p className="text-sm text-slate-500 leading-relaxed max-w-3xl">
                       This option is used to start a fresh sales period. Unlike a full wipe, it automatically retains all registered products, current unpaid credit debtors, and the last 200 transactions (sales and returns logs) so your dashboard analytics and notifications stay contextually accurate.
@@ -1177,21 +1313,21 @@ export default function SettingsPage() {
                       onClick={() => toggleSection('wipe_db')}
                       className="h-9 px-3.5 text-xs font-bold border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 rounded-xl"
                     >
-                      {collapsedSections['wipe_db'] ? (
-                        <>
-                          <ChevronDown className="h-4 w-4 text-slate-600" />
-                          <span>Expand</span>
-                        </>
-                      ) : (
+                      {isSectionExpanded('wipe_db') ? (
                         <>
                           <ChevronUp className="h-4 w-4 text-slate-600" />
                           <span>Minimise</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 text-slate-600" />
+                          <span>Expand</span>
                         </>
                       )}
                     </Button>
                   </div>
                 </CardHeader>
-                {!collapsedSections['wipe_db'] && (
+                {isSectionExpanded('wipe_db') && (
                   <CardContent className="pt-6 space-y-4">
                     <p className="text-sm text-slate-500 leading-relaxed max-w-3xl">
                       This option completely reinstates the database to its empty, clean state. Running this will wipe all data and require a new user registration to access the console.

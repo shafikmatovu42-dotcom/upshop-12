@@ -460,6 +460,7 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
           id: p.id,
           name: p.name,
           category: p.category,
+          type: p.type || 'Standard',
           price: p.price,
           buyingPrice: p.buyingPrice || 0,
           boxBuyingPrice: p.boxBuyingPrice || 0,
@@ -474,8 +475,70 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
       );
     }
 
+    // Product Types API
+    if (path === '/api/product-types' && method === 'GET') {
+      const urlObj = new URL(url, 'http://localhost')
+      const productName = urlObj.searchParams.get('productName') || undefined
+      const types = await db.getUserProductTypes(userId, productName)
+      return createJsonResponse(types.map(t => ({
+        id: t.id,
+        productName: t.productName,
+        typeName: t.typeName,
+        buyingPrice: t.buyingPrice,
+        price: t.price,
+        warehouseStock: t.warehouseStock,
+        shopStock: t.shopStock,
+        piecesPerBox: t.piecesPerBox,
+        imageUrl: t.imageUrl
+      })))
+    }
+
+    if (path === '/api/product-types' && method === 'POST') {
+      const body = getBody()
+      const { name, category, type, buyingPrice, price, warehouseStock, shopStock, piecesPerBox, imageUrl } = body
+      if (!name || !type) return createErrorResponse('Missing required fields', 400)
+      const id = safeRandomUUID()
+      const now = new Date().toISOString()
+      const pt = {
+        id,
+        userId,
+        productName: name,
+        typeName: type,
+        buyingPrice: Number(buyingPrice || 0),
+        price: Number(price || 0),
+        warehouseStock: Number(warehouseStock || 0),
+        shopStock: Number(shopStock || 0),
+        piecesPerBox: Number(piecesPerBox || 1),
+        imageUrl: imageUrl || null,
+        createdAt: now,
+        updatedAt: now
+      }
+      await db.saveProductType(pt)
+      return createJsonResponse(pt, 201)
+    }
+
+    if (path.startsWith('/api/product-types/') && method === 'PUT') {
+      const parts = path.split('/')
+      const id = parts[parts.length - 1]
+      const body = getBody()
+      const existing = await db.findProductTypeById(id)
+      if (!existing || existing.userId !== userId) return createErrorResponse('Product type not found', 404)
+      const updated = { ...existing, ...body, updatedAt: new Date().toISOString() }
+      await db.saveProductType(updated)
+      return createJsonResponse(updated)
+    }
+
+    if (path.startsWith('/api/product-types/') && method === 'DELETE') {
+      const parts = path.split('/')
+      const id = parts[parts.length - 1]
+      const existing = await db.findProductTypeById(id)
+      if (!existing || existing.userId !== userId) return createErrorResponse('Product type not found', 404)
+      await db.deleteProductType(id)
+      return createJsonResponse({ success: true })
+    }
+
     if (path === '/api/products' && method === 'POST') {
-      const { name, category, price, buyingPrice, boxBuyingPrice, boxSellingPrice, piecesPerBox, warehouseStock, shopStock, imageUrl, expiryDate } = getBody();
+      const { name, category, type, price, buyingPrice, boxBuyingPrice, boxSellingPrice, piecesPerBox, warehouseStock, shopStock, imageUrl, expiryDate } = getBody();
       if (!name) return createErrorResponse('Product name is required', 400);
       const productId = safeRandomUUID();
       const now = new Date().toISOString();
@@ -484,6 +547,7 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
         userId,
         name,
         category: category || 'General',
+        type: type || 'Standard',
         price: price || 0,
         buyingPrice: buyingPrice || 0,
         boxBuyingPrice: boxBuyingPrice || 0,
@@ -502,6 +566,7 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
         id: product.id,
         name: product.name,
         category: product.category,
+        type: product.type,
         price: product.price,
         buyingPrice: product.buyingPrice,
         boxBuyingPrice: product.boxBuyingPrice,
@@ -520,7 +585,7 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
       const parts = path.split('/');
       const id = parts[parts.length - 1];
       const body = getBody();
-      const { name, category, price, buyingPrice, boxBuyingPrice, boxSellingPrice, piecesPerBox, warehouseStock, shopStock, minStockLevel, imageUrl, expiryDate } = body;
+      const { name, category, type, price, buyingPrice, boxBuyingPrice, boxSellingPrice, piecesPerBox, warehouseStock, shopStock, minStockLevel, imageUrl, expiryDate } = body;
       const product = await db.findProduct(id);
       if (!product || product.userId !== userId) {
         return createErrorResponse('Product not found', 404);
@@ -528,6 +593,7 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
 
       if (name !== undefined) product.name = name;
       if (category !== undefined) product.category = category;
+      if (type !== undefined) product.type = type;
       if (price !== undefined) product.price = Number(price);
       if (buyingPrice !== undefined) product.buyingPrice = Number(buyingPrice);
       if (boxBuyingPrice !== undefined) product.boxBuyingPrice = Number(boxBuyingPrice);
@@ -545,6 +611,7 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
         id: product.id,
         name: product.name,
         category: product.category,
+        type: product.type,
         price: product.price,
         buyingPrice: product.buyingPrice,
         boxBuyingPrice: product.boxBuyingPrice,
@@ -597,6 +664,7 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
         movements.map(m => ({
           id: m.id,
           productName: m.productName,
+          typeName: m.typeName || m.productType || null,
           quantity: m.quantity,
           type: m.type,
           destination: m.destination,
@@ -618,16 +686,18 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
     }
 
     if (path === '/api/movements' && method === 'POST') {
-      const { productName, quantity, type, destination, week, buyingPrice, sellingPrice, unitType, paymentMode, supplierName, supplierContact, totalAmount, transferredBy, receivedBy, expiryDate } = getBody();
+      const body = getBody();
+      const { productName, typeName, productType, quantity, type, destination, week, buyingPrice, sellingPrice, unitType, paymentMode, supplierName, supplierContact, totalAmount, transferredBy, receivedBy, expiryDate, timestamp } = body;
       if (!productName || !quantity || !type || !destination || !week) {
         return createErrorResponse('Missing required fields', 400);
       }
       const movementId = safeRandomUUID();
-      const now = new Date().toISOString();
+      const now = timestamp || new Date().toISOString();
       const movement = {
         id: movementId,
         userId,
         productName,
+        typeName: typeName || productType || null,
         quantity,
         type,
         destination,
@@ -688,18 +758,20 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
     }
 
     if (path === '/api/creditors' && method === 'POST') {
-      const { supplierName, supplierContact, productName, quantity, unitType, buyingPrice, totalAmount, paymentMode, paymentDays, dueDate } = getBody();
+      const body = getBody();
+      const { supplierName, supplierContact, productName, typeName, quantity, unitType, buyingPrice, totalAmount, paymentMode, paymentDays, dueDate, timestamp } = body;
       if (!supplierName || !productName || !totalAmount) {
         return createErrorResponse('Missing required creditor fields', 400);
       }
       const creditorId = `CRD-${Math.floor(10000 + Math.random() * 90000)}`;
-      const now = new Date().toISOString();
+      const now = timestamp || new Date().toISOString();
       const creditor = {
         id: creditorId,
         userId,
         supplierName,
         supplierContact: supplierContact || '',
         productName,
+        typeName: typeName || null,
         quantity: Number(quantity || 1),
         unitType: unitType || 'pieces',
         buyingPrice: Number(buyingPrice || 0),
@@ -756,12 +828,13 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
     }
 
     if (path === '/api/sales' && method === 'POST') {
-      const { week, total, paymentMethod, cashSubtype, cashAmount, creditAmount, customerName, status, dueDate, amountPaid, items } = getBody();
+      const body = getBody();
+      const { week, total, paymentMethod, cashSubtype, cashAmount, creditAmount, customerName, status, dueDate, amountPaid, items, timestamp } = body;
       if (!week || total === undefined) {
         return createErrorResponse('Missing required fields', 400);
       }
       const saleId = safeRandomUUID();
-      const now = new Date().toISOString();
+      const now = timestamp || new Date().toISOString();
       const sale = {
         id: saleId,
         userId,
@@ -892,7 +965,8 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
     }
 
     if (path === '/api/returns' && method === 'POST') {
-      const { saleId, productName, quantity, amount, reason, status, productId, returnType } = getBody();
+      const body = getBody();
+      const { saleId, productName, typeName, quantity, amount, reason, status, productId, returnType } = body;
       if (!saleId || !productName || !quantity || !amount) {
         return createErrorResponse('Missing required fields', 400);
       }
@@ -950,12 +1024,13 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
         userId,
         saleId,
         productName,
+        typeName: typeName || null,
         quantity: Number(quantity),
         amount: Number(amount),
         reason,
         status: status || 'reinstated',
         returnType: rType,
-        timestamp: new Date().toISOString()
+        timestamp: body.timestamp || new Date().toISOString()
       };
       await db.saveReturn(returnEntry);
       return createJsonResponse(returnEntry, 201);

@@ -29,10 +29,38 @@ export function UpdaterDialog() {
   const [isTauri, setIsTauri] = useState(false)
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    const isTauriEnv = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+    if (isTauriEnv) {
       setIsTauri(true)
+      // Auto check updates on mount
+      autoCheckForUpdate()
     }
+
+    const handleOnlineCheck = () => {
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        autoCheckForUpdate()
+      }
+    }
+
+    window.addEventListener("online", handleOnlineCheck)
+    return () => window.removeEventListener("online", handleOnlineCheck)
   }, [])
+
+  const autoCheckForUpdate = async () => {
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater")
+      const update = await check()
+
+      if (update && update.available) {
+        setUpdateAvailable(update)
+        setStatusMessage(`A new software update (v${update.version}) is available!`)
+        // Auto open update dialog when an update is found!
+        setOpen(true)
+      }
+    } catch (err) {
+      console.warn("Auto update check background attempt:", err)
+    }
+  }
 
   const handleCheckUpdate = async (manual = true) => {
     if (!isTauri) {
@@ -52,7 +80,7 @@ export function UpdaterDialog() {
       if (update && update.available) {
         setUpdateAvailable(update)
         setStatusMessage(`Version ${update.version} is available!`)
-        if (manual) setOpen(true)
+        setOpen(true)
       } else {
         setUpdateAvailable(null)
         setStatusMessage(`You are running the latest version (v${currentVersion}).`)

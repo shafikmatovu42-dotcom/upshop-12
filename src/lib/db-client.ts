@@ -192,6 +192,24 @@ export async function getDb(): Promise<Database> {
         )
       `);
 
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS product_types (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          productName TEXT NOT NULL,
+          typeName TEXT NOT NULL,
+          buyingPrice REAL DEFAULT 0,
+          price REAL DEFAULT 0,
+          warehouseStock INTEGER DEFAULT 0,
+          shopStock INTEGER DEFAULT 0,
+          piecesPerBox INTEGER DEFAULT 1,
+          imageUrl TEXT,
+          createdAt TEXT,
+          updatedAt TEXT,
+          FOREIGN KEY(userId) REFERENCES users(id)
+        )
+      `);
+
       // Dynamic check for any missing columns
       try {
         const userColumns = await db.select<any[]>("PRAGMA table_info(users)");
@@ -224,6 +242,9 @@ export async function getDb(): Promise<Database> {
         if (!returnColumnNames.includes('dismissed')) {
           await db.execute('ALTER TABLE returns ADD COLUMN dismissed INTEGER DEFAULT 0');
         }
+        if (!returnColumnNames.includes('typeName')) {
+          await db.execute("ALTER TABLE returns ADD COLUMN typeName TEXT DEFAULT 'Standard'");
+        }
 
         const productColumns = await db.select<any[]>("PRAGMA table_info(products)");
         const productColumnNames = productColumns.map(c => c.name);
@@ -241,6 +262,9 @@ export async function getDb(): Promise<Database> {
         }
         if (!productColumnNames.includes('piecesPerBox')) {
           await db.execute('ALTER TABLE products ADD COLUMN piecesPerBox INTEGER DEFAULT 1');
+        }
+        if (!productColumnNames.includes('type')) {
+          await db.execute("ALTER TABLE products ADD COLUMN type TEXT DEFAULT 'Standard'");
         }
         const movementColumns = await db.select<any[]>("PRAGMA table_info(movements)");
         const movementColumnNames = movementColumns.map(c => c.name);
@@ -277,6 +301,9 @@ export async function getDb(): Promise<Database> {
         if (!movementColumnNames.includes('receivedBy')) {
           await db.execute('ALTER TABLE movements ADD COLUMN receivedBy TEXT');
         }
+        if (!movementColumnNames.includes('typeName')) {
+          await db.execute("ALTER TABLE movements ADD COLUMN typeName TEXT DEFAULT 'Standard'");
+        }
 
         const saleItemColumns = await db.select<any[]>("PRAGMA table_info(sale_items)");
         const saleItemColumnNames = saleItemColumns.map(c => c.name);
@@ -295,6 +322,9 @@ export async function getDb(): Promise<Database> {
         if (!saleItemColumnNames.includes('boxSellingPrice')) {
           await db.execute('ALTER TABLE sale_items ADD COLUMN boxSellingPrice REAL DEFAULT 0');
         }
+        if (!saleItemColumnNames.includes('typeName')) {
+          await db.execute("ALTER TABLE sale_items ADD COLUMN typeName TEXT DEFAULT 'Standard'");
+        }
 
         const salesColumns = await db.select<any[]>("PRAGMA table_info(sales)");
         const salesColumnNames = salesColumns.map(c => c.name);
@@ -312,6 +342,9 @@ export async function getDb(): Promise<Database> {
         const creditorColumnNames = creditorColumns.map(c => c.name);
         if (!creditorColumnNames.includes('supplierContact')) {
           await db.execute('ALTER TABLE creditors ADD COLUMN supplierContact TEXT');
+        }
+        if (!creditorColumnNames.includes('typeName')) {
+          await db.execute("ALTER TABLE creditors ADD COLUMN typeName TEXT DEFAULT 'Standard'");
         }
       } catch (err) {
         console.error('Error running table info pragma / column additions:', err);
@@ -437,17 +470,76 @@ export async function saveProduct(product: any) {
   if (existing.length > 0) {
     await db.execute(
       `UPDATE products SET 
-        name = ?, category = ?, price = ?, buyingPrice = ?, warehouseStock = ?, shopStock = ?, minStockLevel = ?, imageUrl = ?, expiryDate = ? 
+        name = ?, category = ?, price = ?, buyingPrice = ?, warehouseStock = ?, shopStock = ?, minStockLevel = ?, imageUrl = ?, expiryDate = ?, type = ? 
        WHERE id = ?`,
-      [product.name, product.category, product.price, product.buyingPrice || 0, product.warehouseStock, product.shopStock, product.minStockLevel, product.imageUrl, product.expiryDate || null, product.id]
+      [product.name, product.category, product.price, product.buyingPrice || 0, product.warehouseStock, product.shopStock, product.minStockLevel, product.imageUrl, product.expiryDate || null, product.type || 'Standard', product.id]
     );
   } else {
     await db.execute(
-      `INSERT INTO products (id, userId, name, category, price, buyingPrice, warehouseStock, shopStock, minStockLevel, imageUrl, expiryDate) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [product.id, product.userId, product.name, product.category, product.price, product.buyingPrice || 0, product.warehouseStock, product.shopStock, product.minStockLevel, product.imageUrl, product.expiryDate || null]
+      `INSERT INTO products (id, userId, name, category, price, buyingPrice, warehouseStock, shopStock, minStockLevel, imageUrl, expiryDate, type) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [product.id, product.userId, product.name, product.category, product.price, product.buyingPrice || 0, product.warehouseStock, product.shopStock, product.minStockLevel, product.imageUrl, product.expiryDate || null, product.type || 'Standard']
     );
   }
+}
+
+export async function findProductTypeById(id: string) {
+  if (!isTauri) {
+    const types = getLocalStorageItem<any>('upshop_product_types');
+    return types.find(t => t.id === id) || null;
+  }
+  const db = await getDb();
+  const rows = await db.select<any[]>('SELECT * FROM product_types WHERE id = ?', [id]);
+  return rows[0] || null;
+}
+
+export async function getUserProductTypes(userId: string, productName?: string) {
+  if (!isTauri) {
+    const types = getLocalStorageItem<any>('upshop_product_types');
+    return types.filter((t: any) => t.userId === userId && (!productName || t.productName.toLowerCase() === productName.toLowerCase()));
+  }
+  const db = await getDb();
+  if (productName) {
+    return db.select<any[]>('SELECT * FROM product_types WHERE userId = ? AND LOWER(productName) = LOWER(?)', [userId, productName]);
+  }
+  return db.select<any[]>('SELECT * FROM product_types WHERE userId = ?', [userId]);
+}
+
+export async function saveProductType(pt: any) {
+  if (!isTauri) {
+    const types = getLocalStorageItem<any>('upshop_product_types');
+    const idx = types.findIndex((t: any) => t.id === pt.id);
+    if (idx > -1) {
+      types[idx] = { ...types[idx], ...pt };
+    } else {
+      types.push(pt);
+    }
+    setLocalStorageItem('upshop_product_types', types);
+    return;
+  }
+  const db = await getDb();
+  const existing = await db.select<any[]>('SELECT id FROM product_types WHERE id = ?', [pt.id]);
+  if (existing.length > 0) {
+    await db.execute(
+      `UPDATE product_types SET productName = ?, typeName = ?, buyingPrice = ?, price = ?, warehouseStock = ?, shopStock = ?, piecesPerBox = ?, imageUrl = ?, updatedAt = ? WHERE id = ?`,
+      [pt.productName, pt.typeName, pt.buyingPrice || 0, pt.price || 0, pt.warehouseStock || 0, pt.shopStock || 0, pt.piecesPerBox || 1, pt.imageUrl || null, pt.updatedAt || new Date().toISOString(), pt.id]
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO product_types (id, userId, productName, typeName, buyingPrice, price, warehouseStock, shopStock, piecesPerBox, imageUrl, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [pt.id, pt.userId, pt.productName, pt.typeName, pt.buyingPrice || 0, pt.price || 0, pt.warehouseStock || 0, pt.shopStock || 0, pt.piecesPerBox || 1, pt.imageUrl || null, pt.createdAt || new Date().toISOString(), pt.updatedAt || new Date().toISOString()]
+    );
+  }
+}
+
+export async function deleteProductType(typeId: string) {
+  if (!isTauri) {
+    const types = getLocalStorageItem<any>('upshop_product_types');
+    setLocalStorageItem('upshop_product_types', types.filter((t: any) => t.id !== typeId));
+    return;
+  }
+  const db = await getDb();
+  await db.execute('DELETE FROM product_types WHERE id = ?', [typeId]);
 }
 
 export async function saveCreditor(creditor: any) {
@@ -455,21 +547,23 @@ export async function saveCreditor(creditor: any) {
     const creditors = getLocalStorageItem<any>('upshop_creditors');
     creditors.push({
       ...creditor,
-      dismissed: creditor.dismissed ? 1 : 0
+      dismissed: creditor.dismissed ? 1 : 0,
+      typeName: creditor.typeName || creditor.type || 'Standard'
     });
     setLocalStorageItem('upshop_creditors', creditors);
     return;
   }
   const db = await getDb();
   await db.execute(
-    `INSERT INTO creditors (id, userId, supplierName, supplierContact, productName, quantity, unitType, buyingPrice, totalAmount, amountPaid, paymentMode, paymentDays, dueDate, status, dismissed, timestamp)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO creditors (id, userId, supplierName, supplierContact, productName, typeName, quantity, unitType, buyingPrice, totalAmount, amountPaid, paymentMode, paymentDays, dueDate, status, dismissed, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       creditor.id,
       creditor.userId,
       creditor.supplierName,
       creditor.supplierContact || null,
       creditor.productName,
+      creditor.typeName || creditor.type || 'Standard',
       creditor.quantity,
       creditor.unitType || 'pieces',
       creditor.buyingPrice,
@@ -584,6 +678,7 @@ export async function saveMovement(movement: any) {
     const movements = getLocalStorageItem<any>('upshop_movements');
     movements.push({
       ...movement,
+      typeName: movement.typeName || movement.type_name || 'Standard',
       dismissed: movement.dismissed ? 1 : 0
     });
     setLocalStorageItem('upshop_movements', movements);
@@ -591,10 +686,39 @@ export async function saveMovement(movement: any) {
   }
   const db = await getDb();
   await db.execute(
-    `INSERT INTO movements (id, userId, productName, quantity, type, destination, week, timestamp, expiryDate, dismissed) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [movement.id, movement.userId, movement.productName, movement.quantity, movement.type, movement.destination, movement.week, movement.timestamp, movement.expiryDate || null, movement.dismissed ? 1 : 0]
+    `INSERT INTO movements (id, userId, productName, quantity, type, destination, week, timestamp, expiryDate, dismissed, typeName) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [movement.id, movement.userId, movement.productName, movement.quantity, movement.type, movement.destination, movement.week, movement.timestamp, movement.expiryDate || null, movement.dismissed ? 1 : 0, movement.typeName || movement.type_name || 'Standard']
   );
+  // Adjust product_types stocks if applicable
+  try {
+    const tname = movement.typeName || movement.type_name || 'Standard'
+    const rows = await db.select<any[]>('SELECT id, warehouseStock, shopStock FROM product_types WHERE userId = ? AND productName = ? AND typeName = ?', [movement.userId, movement.productName, tname])
+    if (rows.length > 0) {
+      const pt = rows[0]
+      let newWh = pt.warehouseStock || 0
+      let newShop = pt.shopStock || 0
+      const q = Number(movement.quantity || 0)
+      if (movement.type === 'transfer') {
+        if (movement.destination === 'shop' || movement.destination === 'Shop Floor' || movement.destination === 'shop_floor') {
+          newWh = Math.max(0, newWh - q)
+          newShop = newShop + q
+        } else if (movement.destination === 'warehouse') {
+          newWh = newWh + q
+          newShop = Math.max(0, newShop - q)
+        }
+      } else if (movement.type === 'collection' || movement.type === 'purchase') {
+        if (movement.destination === 'warehouse') newWh = newWh + q
+        else newShop = newShop + q
+      } else if (movement.type === 'expiry_loss' || movement.type === 'loss') {
+        // assume loss reduces shop stock
+        newShop = Math.max(0, newShop - q)
+      }
+      await db.execute('UPDATE product_types SET warehouseStock = ?, shopStock = ?, updatedAt = ? WHERE id = ?', [newWh, newShop, new Date().toISOString(), pt.id])
+    }
+  } catch (e) {
+    console.error('Failed to adjust product_types stocks for movement', e)
+  }
 }
 
 export async function saveSale(sale: any, items?: any[]) {
@@ -654,10 +778,25 @@ export async function saveSale(sale: any, items?: any[]) {
       const itemId = safeRandomUUID();
       const resolvedName = item.name || item.productName || item.title || 'General Product';
       await db.execute(
-        `INSERT INTO sale_items (id, saleId, productId, name, price, quantity, itemPaymentMode, sellingUnitType, boxQty, pieceQty, boxSellingPrice) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [itemId, sale.id, item.id || safeRandomUUID(), resolvedName, item.customPrice || item.price || 0, item.quantity || 1, item.itemPaymentMode || 'inherit', item.sellingUnitType || 'pieces', item.boxQty || 0, item.pieceQty || 0, item.boxSellingPrice || 0]
+        `INSERT INTO sale_items (id, saleId, productId, name, price, quantity, itemPaymentMode, sellingUnitType, boxQty, pieceQty, boxSellingPrice, typeName) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [itemId, sale.id, item.id || safeRandomUUID(), resolvedName, item.customPrice || item.price || 0, item.quantity || 1, item.itemPaymentMode || 'inherit', item.sellingUnitType || 'pieces', item.boxQty || 0, item.pieceQty || 0, item.boxSellingPrice || 0, item.typeName || item.type || 'Standard']
       );
+    }
+    // After inserting sale items, deduct stock from product_types where applicable
+    try {
+      for (const item of items) {
+        const tname = item.typeName || item.type || 'Standard'
+        const rows = await db.select<any[]>('SELECT id, shopStock FROM product_types WHERE userId = ? AND productName = ? AND typeName = ?', [sale.userId, item.name || item.productName || item.title, tname])
+        if (rows.length > 0) {
+          const pt = rows[0]
+          const deduct = Number(item.quantity || 0)
+          const newShop = Math.max(0, (pt.shopStock || 0) - deduct)
+          await db.execute('UPDATE product_types SET shopStock = ?, updatedAt = ? WHERE id = ?', [newShop, new Date().toISOString(), pt.id])
+        }
+      }
+    } catch (e) {
+      console.error('Failed to deduct product_types stock for sale', e)
     }
   }
 }
@@ -958,7 +1097,8 @@ export async function saveReturn(returnEntry: any) {
     const returns = getLocalStorageItem<any>('upshop_returns');
     const newReturn = {
       ...returnEntry,
-      dismissed: returnEntry.dismissed ? 1 : 0
+      dismissed: returnEntry.dismissed ? 1 : 0,
+      typeName: returnEntry.typeName || returnEntry.type || null
     };
     returns.push(newReturn);
     setLocalStorageItem('upshop_returns', returns);
@@ -966,13 +1106,14 @@ export async function saveReturn(returnEntry: any) {
   }
   const db = await getDb();
   await db.execute(
-    `INSERT INTO returns (id, userId, saleId, productName, quantity, amount, reason, status, dismissed, timestamp) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO returns (id, userId, saleId, productName, typeName, quantity, amount, reason, status, dismissed, timestamp) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       returnEntry.id,
       returnEntry.userId,
       returnEntry.saleId,
       returnEntry.productName,
+      returnEntry.typeName || returnEntry.type || null,
       returnEntry.quantity,
       returnEntry.amount,
       returnEntry.reason || null,
@@ -981,6 +1122,23 @@ export async function saveReturn(returnEntry: any) {
       returnEntry.timestamp
     ]
   );
+  // Adjust product_types stock according to return type
+  try {
+    const tname = returnEntry.typeName || returnEntry.type || 'Standard'
+    const rows = await db.select<any[]>('SELECT id, shopStock FROM product_types WHERE userId = ? AND productName = ? AND typeName = ?', [returnEntry.userId, returnEntry.productName, tname])
+    if (rows.length > 0) {
+      const pt = rows[0]
+      if (returnEntry.returnType === 'outwards') {
+        const newShop = Math.max(0, (pt.shopStock || 0) - Number(returnEntry.quantity || 0))
+        await db.execute('UPDATE product_types SET shopStock = ?, updatedAt = ? WHERE id = ?', [newShop, new Date().toISOString(), pt.id])
+      } else if (returnEntry.status === 'reinstated' || returnEntry.returnType === 'inwards') {
+        const newShop = (pt.shopStock || 0) + Number(returnEntry.quantity || 0)
+        await db.execute('UPDATE product_types SET shopStock = ?, updatedAt = ? WHERE id = ?', [newShop, new Date().toISOString(), pt.id])
+      }
+    }
+  } catch (e) {
+    console.error('Failed to adjust product_types for return', e)
+  }
 }
 
 export async function getUserReturns(userId: string) {

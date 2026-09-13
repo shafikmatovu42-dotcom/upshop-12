@@ -778,6 +778,7 @@ export default function DashboardPage() {
             groups[displayGroupKey].items.push({
               saleId: sale.id, // Transaction ID
               productName: item.name,
+              typeName: item.typeName || item.type || 'Standard',
               customerName: sale.customerName || 'Normal Customer',
               quantity: item.quantity,
               amount: item.price * item.quantity,
@@ -1821,6 +1822,8 @@ export default function DashboardPage() {
                           <p className="font-bold text-slate-800">{it.productName}</p>
                           <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground font-semibold">
                             <span>Customer: {it.customerName}</span>
+                            <span>•</span>
+                            <span className="inline-flex items-center px-2 py-0.5 bg-primary/10 text-primary text-xs font-bold rounded">{it.typeName || 'Standard'}</span>
                             <span>•</span>
                             <span 
                               onClick={() => {
