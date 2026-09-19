@@ -14,7 +14,23 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { Search, Plus, Filter, ArrowUpDown, Package, Warehouse, Store, Edit2 } from "lucide-react"
+import { 
+  Search, 
+  Plus, 
+  Filter, 
+  ArrowUpDown, 
+  Package, 
+  Warehouse, 
+  Store, 
+  Edit2, 
+  Sliders, 
+  Trash2, 
+  Tag, 
+  Check, 
+  X,
+  Building2,
+  DollarSign
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
@@ -68,7 +84,21 @@ export default function InventoryPage() {
 
   const startEdit = (product: any) => {
     setEditingProduct(product)
-    setEditData({ ...product })
+    setEditData({
+      ...product,
+      name: product.name || '',
+      type: product.type || 'Standard',
+      category: product.category || 'General',
+      buyingPrice: product.buyingPrice ?? 0,
+      price: product.price ?? 0,
+      warehouseStock: product.warehouseStock ?? 0,
+      shopStock: product.shopStock ?? 0,
+      minStockLevel: product.minStockLevel ?? 5,
+      piecesPerBox: product.piecesPerBox ?? 12,
+      boxBuyingPrice: product.boxBuyingPrice ?? 0,
+      boxSellingPrice: product.boxSellingPrice ?? 0,
+      imageUrl: product.imageUrl || ''
+    })
   }
 
   const saveEdit = async () => {
@@ -89,6 +119,33 @@ export default function InventoryPage() {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not save product.' })
     }
   }
+
+  const deleteProduct = async (id: string) => {
+    if (!token) return
+    if (!window.confirm("Are you sure you want to delete this product item?")) return
+    try {
+      const res = await fetch(`/api/products/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        toast({ title: 'Deleted', description: 'Product deleted successfully.' })
+        setEditingProduct(null)
+        fetchProducts()
+      } else {
+        throw new Error('Delete failed')
+      }
+    } catch (e) {
+      console.error(e)
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not delete product.' })
+    }
+  }
+
+  // Margin calculation for inspector
+  const marginPerUnit = (Number(editData.price) || 0) - (Number(editData.buyingPrice) || 0)
+  const marginPercent = Number(editData.price) > 0 
+    ? Math.round((marginPerUnit / Number(editData.price)) * 100) 
+    : 0
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -216,39 +273,253 @@ export default function InventoryPage() {
         </CardContent>
       </Card>
 
-      {/* Edit Modal */}
+      {/* Product Inspector & Edit Modal */}
       {editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <Card role="dialog" className="w-full max-w-lg border-none shadow-2xl bg-white p-6 animate-in zoom-in-95 duration-200">
-            <CardHeader className="p-0 pb-4 border-b">
-              <CardTitle className="text-xl font-bold text-primary">Edit Product Details</CardTitle>
-              <CardDescription className="text-slate-500 font-semibold mt-1">Modify inventory settings or remove this item</CardDescription>
-            </CardHeader>
-            <div className="py-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="font-bold">Product Name</Label>
-                  <Input value={editData.name || ''} onChange={(e)=>setEditData({...editData, name: e.target.value})} className="h-11" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <Card role="dialog" className="w-full max-w-2xl border-none shadow-2xl bg-white dark:bg-slate-900 animate-in zoom-in-95 duration-200 overflow-hidden my-8">
+            <CardHeader className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-6 relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-primary/20 rounded-lg text-primary-foreground border border-white/10">
+                    <Sliders className="h-5 w-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl font-bold flex items-center gap-2">
+                      Product Inspector
+                      <Badge className="bg-blue-500/20 text-blue-300 border-blue-400/30 text-xs font-semibold">
+                        {editData.type || "Standard"}
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription className="text-slate-300 text-xs mt-0.5">
+                      Inspect & modify product attributes, prices, stock allocations, and variation settings
+                    </CardDescription>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label className="font-bold">Category</Label>
-                  <Input value={editData.category || ''} onChange={(e)=>setEditData({...editData, category: e.target.value})} className="h-11" />
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setEditingProduct(null)}
+                  className="text-slate-400 hover:text-white hover:bg-white/10 rounded-full h-8 w-8"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+              {/* Product Header summary & Profit preview banner */}
+              <div className="flex flex-wrap items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 gap-3">
+                <div className="flex items-center gap-3">
+                  {editData.imageUrl ? (
+                    <img src={editData.imageUrl} alt={editData.name} className="h-12 w-12 rounded-lg object-cover border" />
+                  ) : (
+                    <div className="h-12 w-12 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+                      <Package className="h-6 w-6 text-slate-500" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="font-extrabold text-base text-slate-900 dark:text-slate-100">{editData.name || "Product Name"}</div>
+                    <div className="text-xs font-medium text-slate-500">ID: {editingProduct.id}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-xs font-semibold">
+                  <div className="text-right">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Estimated Profit/Unit</span>
+                    <span className={marginPerUnit >= 0 ? "text-emerald-600 dark:text-emerald-400 font-mono font-bold text-sm" : "text-rose-600 font-mono font-bold text-sm"}>
+                      Shs {marginPerUnit.toLocaleString()} ({marginPercent}%)
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="font-bold">Buying Price</Label>
-                  <Input type="number" value={editData.buyingPrice ?? ''} onChange={(e)=>setEditData({...editData, buyingPrice: e.target.value === '' ? 0 : Number(e.target.value)})} className="h-11" />
+
+              {/* Section 1: Basic Specifications */}
+              <div className="space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5 text-primary" /> General Specifications
                 </div>
-                <div className="space-y-2">
-                  <Label className="font-bold">Selling Price</Label>
-                  <Input type="number" value={editData.price ?? ''} onChange={(e)=>setEditData({...editData, price: e.target.value === '' ? 0 : Number(e.target.value)})} className="h-11" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Product Name *</Label>
+                    <Input 
+                      value={editData.name || ''} 
+                      onChange={(e) => setEditData({ ...editData, name: e.target.value })} 
+                      className="h-10 text-xs font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Product Type / Variation *</Label>
+                    <Input 
+                      value={editData.type || ''} 
+                      onChange={(e) => setEditData({ ...editData, type: e.target.value })} 
+                      placeholder="e.g. Standard, Pro, 600W"
+                      className="h-10 text-xs font-bold text-primary"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Category</Label>
+                    <Input 
+                      value={editData.category || ''} 
+                      onChange={(e) => setEditData({ ...editData, category: e.target.value })} 
+                      className="h-10 text-xs font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Stock Allocations */}
+              <div className="space-y-3 pt-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Warehouse className="h-3.5 w-3.5 text-amber-500" /> Stock Allocations & Low Stock Alerts
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Warehouse Stock (Units)</Label>
+                    <Input 
+                      type="number" 
+                      value={editData.warehouseStock ?? ''} 
+                      onChange={(e) => setEditData({ ...editData, warehouseStock: e.target.value === '' ? 0 : Number(e.target.value) })} 
+                      className="h-10 text-xs font-mono font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Shop Floor Stock (Units)</Label>
+                    <Input 
+                      type="number" 
+                      value={editData.shopStock ?? ''} 
+                      onChange={(e) => setEditData({ ...editData, shopStock: e.target.value === '' ? 0 : Number(e.target.value) })} 
+                      className="h-10 text-xs font-mono font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Low Stock Alert Threshold</Label>
+                    <Input 
+                      type="number" 
+                      value={editData.minStockLevel ?? ''} 
+                      onChange={(e) => setEditData({ ...editData, minStockLevel: e.target.value === '' ? 0 : Number(e.target.value) })} 
+                      className="h-10 text-xs font-mono font-bold"
+                      placeholder="e.g. 5"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Unit Pricing */}
+              <div className="space-y-3 pt-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <DollarSign className="h-3.5 w-3.5 text-emerald-500" /> Unit Pricing Structure
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Buying Unit Price (Cost, Shs)</Label>
+                    <Input 
+                      type="number" 
+                      value={editData.buyingPrice ?? ''} 
+                      onChange={(e) => setEditData({ ...editData, buyingPrice: e.target.value === '' ? 0 : Number(e.target.value) })} 
+                      className="h-10 text-xs font-mono font-bold text-amber-700 dark:text-amber-400"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Selling Unit Price (Retail, Shs)</Label>
+                    <Input 
+                      type="number" 
+                      value={editData.price ?? ''} 
+                      onChange={(e) => setEditData({ ...editData, price: e.target.value === '' ? 0 : Number(e.target.value) })} 
+                      className="h-10 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Box Packaging Configuration */}
+              <div className="space-y-3 pt-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Package className="h-3.5 w-3.5 text-indigo-500" /> Box / Packaging Configuration (Optional)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Pieces Per Box</Label>
+                    <Input 
+                      type="number" 
+                      value={editData.piecesPerBox ?? ''} 
+                      onChange={(e) => setEditData({ ...editData, piecesPerBox: e.target.value === '' ? 0 : Number(e.target.value) })} 
+                      placeholder="12"
+                      className="h-10 text-xs font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Box Buying Price (Shs)</Label>
+                    <Input 
+                      type="number" 
+                      value={editData.boxBuyingPrice ?? ''} 
+                      onChange={(e) => setEditData({ ...editData, boxBuyingPrice: e.target.value === '' ? 0 : Number(e.target.value) })} 
+                      placeholder="0"
+                      className="h-10 text-xs font-mono font-bold text-amber-700 dark:text-amber-400"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Box Selling Price (Shs)</Label>
+                    <Input 
+                      type="number" 
+                      value={editData.boxSellingPrice ?? ''} 
+                      onChange={(e) => setEditData({ ...editData, boxSellingPrice: e.target.value === '' ? 0 : Number(e.target.value) })} 
+                      placeholder="0"
+                      className="h-10 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 5: Image & Expiry */}
+              <div className="space-y-3 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Product Image URL</Label>
+                    <Input 
+                      value={editData.imageUrl || ''} 
+                      onChange={(e) => setEditData({ ...editData, imageUrl: e.target.value })} 
+                      placeholder="https://..."
+                      className="h-10 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Expiry Date (Optional)</Label>
+                    <Input 
+                      type="date"
+                      value={editData.expiryDate || ''} 
+                      onChange={(e) => setEditData({ ...editData, expiryDate: e.target.value })} 
+                      className="h-10 text-xs font-bold"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <Button variant="outline" size="sm" onClick={()=>setEditingProduct(null)} className="h-9">Cancel</Button>
-              <Button size="sm" onClick={saveEdit} className="h-9 bg-primary text-white">Save</Button>
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t p-4 bg-slate-50 dark:bg-slate-800/40">
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => deleteProduct(editingProduct.id)} 
+                className="h-10 font-bold gap-1.5 w-full sm:w-auto"
+              >
+                <Trash2 className="h-4 w-4" /> Delete Product
+              </Button>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setEditingProduct(null)} 
+                  className="h-10 font-bold px-4"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={saveEdit} 
+                  className="h-10 bg-primary text-white font-bold px-6 gap-1.5 shadow-md hover:bg-primary/90"
+                >
+                  <Check className="h-4 w-4" /> Save Changes
+                </Button>
+              </div>
             </div>
           </Card>
         </div>

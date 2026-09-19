@@ -38,7 +38,8 @@ import {
   ChevronDown,
   Calculator,
   Tag,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { useAuth } from "@/lib/auth-context"
@@ -68,6 +69,8 @@ export default function StoreManagementPage() {
   const [products, setProducts] = useState<any[]>([])
   const [movements, setMovements] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isSubmittingIntake, setIsSubmittingIntake] = useState(false)
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false)
 
   // Transfer state
   const [transferDirection, setTransferDirection] = useState<'whse-to-shop' | 'shop-to-whse'>('whse-to-shop')
@@ -87,15 +90,6 @@ export default function StoreManagementPage() {
   const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false)
   const [isIntakeDropdownOpen, setIsIntakeDropdownOpen] = useState(false)
   const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false)
-  const [showAddTypeModal, setShowAddTypeModal] = useState(false)
-  const [newTypeData, setNewTypeData] = useState({
-    productName: "",
-    typeName: "",
-    buyingPrice: "",
-    price: "",
-    warehouseStock: "0",
-    shopStock: "0"
-  })
   const [intakeData, setIntakeData] = useState({ 
     productName: "", 
     typeName: "Standard",
@@ -248,55 +242,6 @@ export default function StoreManagementPage() {
       ? ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
       : Array.from({ length: 52 }, (_, i) => `Week ${i + 1}`)
   }, [userProfile?.operationPeriodMode])
-
-  const handleSaveNewType = async () => {
-    const nameToUse = (newTypeData.productName || intakeData.productName).trim()
-    const typeToUse = newTypeData.typeName.trim()
-    if (!nameToUse || !typeToUse) {
-      toast({ variant: "destructive", title: "Missing Information", description: "Product Name and Type Name are required." })
-      return
-    }
-
-    try {
-      const res = await fetch('/api/product-types', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          name: nameToUse,
-          category: intakeData.category || "General",
-          type: typeToUse,
-          buyingPrice: Number(newTypeData.buyingPrice || 0),
-          price: Number(newTypeData.price || 0),
-          warehouseStock: Number(newTypeData.warehouseStock || 0),
-          shopStock: Number(newTypeData.shopStock || 0)
-        })
-      })
-
-      if (res.ok) {
-        const created = await res.json()
-        toast({ title: "New Product Type Added", description: `Added type "${typeToUse}" for "${nameToUse}".` })
-        setShowAddTypeModal(false)
-        
-        const updatedProducts = await fetch('/api/products', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }).then(r => r.json())
-        setProducts(updatedProducts)
-
-        setIntakeData(prev => ({
-          ...prev,
-          productName: nameToUse,
-          typeName: typeToUse,
-          buyingPrice: String(created.buyingPrice || 0),
-          price: String(created.price || 0)
-        }))
-      }
-    } catch (e) {
-      toast({ variant: "destructive", title: "Error", description: "Could not add new product type." })
-    }
-  }
 
   // Transfer History Movements (Transfers only: type === 'transfer')
   const filteredTransferMovements = useMemo(() => {
@@ -495,7 +440,7 @@ export default function StoreManagementPage() {
   }, [transferUnitType, transferAmount, transferBoxQty, transferPcsPerBox, transferLoosePcs])
 
   const handleTransfer = async () => {
-    if (!selectedProduct || computedTransferTotalUnits <= 0 || !token || !userProfile) return
+    if (isSubmittingTransfer || !selectedProduct || computedTransferTotalUnits <= 0 || !token || !userProfile) return
     const product = products.find(p => p.id === selectedProduct)
     if (!product) return
 
@@ -512,49 +457,51 @@ export default function StoreManagementPage() {
     const newWhseStock = transferDirection === 'whse-to-shop' ? product.warehouseStock - qty : product.warehouseStock + qty
     const newShopStock = transferDirection === 'whse-to-shop' ? product.shopStock + qty : product.shopStock - qty
 
+    setIsSubmittingTransfer(true)
+
     try {
-      // Create movement
-      await fetch('/api/movements', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          productName: product.name,
-          typeName: (transferType || product.type || 'Standard'),
-          quantity: qty,
-          type: "transfer",
-          destination: targetDestination,
-          week: userProfile.currentWeek,
-          transferredBy: transferredBy.trim() || userProfile?.fullName || 'System',
-          timestamp: getActiveRecordingDate().toISOString()
+      // Execute movement creation & product stock update in parallel
+      await Promise.all([
+        fetch('/api/movements', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            productName: product.name,
+            typeName: (transferType || product.type || 'Standard'),
+            quantity: qty,
+            type: "transfer",
+            destination: targetDestination,
+            week: userProfile.currentWeek,
+            transferredBy: transferredBy.trim() || userProfile?.fullName || 'System',
+            timestamp: getActiveRecordingDate().toISOString()
+          })
+        }),
+        fetch(`/api/products/${selectedProduct}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            warehouseStock: newWhseStock,
+            shopStock: newShopStock
+          })
         })
-      })
+      ])
 
-      // Update product stocks
-      await fetch(`/api/products/${selectedProduct}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          warehouseStock: newWhseStock,
-          shopStock: newShopStock
-        })
-      })
+      // Refresh data in parallel
+      const [updatedProducts, updatedMovements] = await Promise.all([
+        fetch('/api/products', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+        fetch('/api/movements', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+      ])
 
-      // Refresh data
-      const updatedProducts = await fetch('/api/products', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(r => r.json())
       setProducts(updatedProducts)
-
-      const updatedMovements = await fetch('/api/movements', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(r => r.json())
       setMovements(updatedMovements)
+
+      window.dispatchEvent(new Event("upshop_data_updated"))
 
       const fromLabel = transferDirection === 'whse-to-shop' ? 'Warehouse' : 'Shop Floor'
       const toLabel = transferDirection === 'whse-to-shop' ? 'Shop Floor' : 'Warehouse'
@@ -566,11 +513,13 @@ export default function StoreManagementPage() {
       setSearchQuery("")
     } catch (e) {
       toast({ variant: "destructive", title: "Error", description: "Failed to transfer stock." })
+    } finally {
+      setIsSubmittingTransfer(false)
     }
   }
 
   const handleIntake = async () => {
-    if (!intakeData.productName || computedTotalUnits <= 0 || !token || !userProfile) return
+    if (isSubmittingIntake || !intakeData.productName || computedTotalUnits <= 0 || !token || !userProfile) return
     
     const qty = computedTotalUnits
     const pcsPerBox = Number(intakeData.piecesPerBox) || 12
@@ -595,6 +544,7 @@ export default function StoreManagementPage() {
     }
 
     const totalCost = totalIntakeCost
+    setIsSubmittingIntake(true)
     
     try {
       const intakeName = intakeData.productName.trim().toLowerCase()
@@ -606,56 +556,51 @@ export default function StoreManagementPage() {
         (p.category || "General").trim().toLowerCase() === intakeCategory &&
         (p.type || "Standard").trim().toLowerCase() === intakeType
       )
-      
-      if (!existingProduct) {
-        // Create new product
-        await fetch('/api/products', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            name: intakeData.productName.trim(),
-            category: intakeData.category || "General",
-            type: intakeData.typeName.trim() || "Standard",
-            buyingPrice: pieceBuyingPrice,
-            price: pieceSellingPrice > 0 ? pieceSellingPrice : pieceBuyingPrice,
-            boxBuyingPrice: boxBuyingPrice,
-            boxSellingPrice: boxSellingPrice,
-            piecesPerBox: pcsPerBox,
-            warehouseStock: intakeData.destination === "warehouse" ? qty : 0,
-            shopStock: intakeData.destination === "shop" ? qty : 0,
-            imageUrl: intakeData.imageUrl || "https://picsum.photos/seed/placeholder/400/400",
-            expiryDate: intakeData.expiryDate || null
-          })
-        })
-      } else {
-        // Update existing product
-        await fetch(`/api/products/${existingProduct.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            category: intakeData.category || existingProduct.category,
-            type: intakeData.typeName.trim() || existingProduct.type || "Standard",
-            buyingPrice: pieceBuyingPrice > 0 ? pieceBuyingPrice : existingProduct.buyingPrice,
-            price: pieceSellingPrice > 0 ? pieceSellingPrice : existingProduct.price,
-            boxBuyingPrice: boxBuyingPrice > 0 ? boxBuyingPrice : existingProduct.boxBuyingPrice,
-            boxSellingPrice: boxSellingPrice > 0 ? boxSellingPrice : existingProduct.boxSellingPrice,
-            piecesPerBox: pcsPerBox,
-            warehouseStock: intakeData.destination === "warehouse" ? existingProduct.warehouseStock + qty : existingProduct.warehouseStock,
-            shopStock: intakeData.destination === "shop" ? existingProduct.shopStock + qty : existingProduct.shopStock,
-            ...(intakeData.imageUrl && { imageUrl: intakeData.imageUrl }),
-            ...(intakeData.expiryDate && !existingProduct.expiryDate && { expiryDate: intakeData.expiryDate })
-          })
-        })
-      }
 
-      // Create movement record
-      await fetch('/api/movements', {
+      const productSavePromise = !existingProduct 
+        ? fetch('/api/products', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              name: intakeData.productName.trim(),
+              category: intakeData.category || "General",
+              type: intakeData.typeName.trim() || "Standard",
+              buyingPrice: pieceBuyingPrice,
+              price: pieceSellingPrice > 0 ? pieceSellingPrice : pieceBuyingPrice,
+              boxBuyingPrice: boxBuyingPrice,
+              boxSellingPrice: boxSellingPrice,
+              piecesPerBox: pcsPerBox,
+              warehouseStock: intakeData.destination === "warehouse" ? qty : 0,
+              shopStock: intakeData.destination === "shop" ? qty : 0,
+              imageUrl: intakeData.imageUrl || "https://picsum.photos/seed/placeholder/400/400",
+              expiryDate: intakeData.expiryDate || null
+            })
+          })
+        : fetch(`/api/products/${existingProduct.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              category: intakeData.category || existingProduct.category,
+              type: intakeData.typeName.trim() || existingProduct.type || "Standard",
+              buyingPrice: pieceBuyingPrice > 0 ? pieceBuyingPrice : existingProduct.buyingPrice,
+              price: pieceSellingPrice > 0 ? pieceSellingPrice : existingProduct.price,
+              boxBuyingPrice: boxBuyingPrice > 0 ? boxBuyingPrice : existingProduct.boxBuyingPrice,
+              boxSellingPrice: boxSellingPrice > 0 ? boxSellingPrice : existingProduct.boxSellingPrice,
+              piecesPerBox: pcsPerBox,
+              warehouseStock: intakeData.destination === "warehouse" ? existingProduct.warehouseStock + qty : existingProduct.warehouseStock,
+              shopStock: intakeData.destination === "shop" ? existingProduct.shopStock + qty : existingProduct.shopStock,
+              ...(intakeData.imageUrl && { imageUrl: intakeData.imageUrl }),
+              ...(intakeData.expiryDate && !existingProduct.expiryDate && { expiryDate: intakeData.expiryDate })
+            })
+          })
+
+      const movementSavePromise = fetch('/api/movements', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -681,43 +626,47 @@ export default function StoreManagementPage() {
         })
       })
 
-      // If purchased on credit, create a Creditor record for notifications & settlement
+      const requests: Promise<any>[] = [productSavePromise, movementSavePromise]
+
       if (intakeData.paymentMode === "credit") {
         const days = Number(intakeData.paymentDays) || 14
         const due = new Date()
         due.setDate(due.getDate() + days)
 
-        await fetch('/api/creditors', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            supplierName: intakeData.supplierName || "General Supplier",
-            supplierContact: intakeData.supplierContact || "",
-            productName: intakeData.productName.trim(),
-            typeName: intakeData.typeName.trim() || "Standard",
-            quantity: qty,
-            unitType: intakeData.unitType,
-            buyingPrice: pieceBuyingPrice,
-            totalAmount: totalCost,
-            paymentMode: "credit",
-            paymentDays: days,
-            dueDate: due.toISOString()
+        requests.push(
+          fetch('/api/creditors', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              supplierName: intakeData.supplierName || "General Supplier",
+              supplierContact: intakeData.supplierContact || "",
+              productName: intakeData.productName.trim(),
+              typeName: intakeData.typeName.trim() || "Standard",
+              quantity: qty,
+              unitType: intakeData.unitType,
+              buyingPrice: pieceBuyingPrice,
+              totalAmount: totalCost,
+              paymentMode: "credit",
+              paymentDays: days,
+              dueDate: due.toISOString()
+            })
           })
-        })
+        )
       }
 
-      // Refresh data
-      const updatedProducts = await fetch('/api/products', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(r => r.json())
-      setProducts(updatedProducts)
+      // Run all write operations concurrently
+      await Promise.all(requests)
 
-      const updatedMovements = await fetch('/api/movements', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(r => r.json())
+      // Refresh products and movements in parallel
+      const [updatedProducts, updatedMovements] = await Promise.all([
+        fetch('/api/products', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+        fetch('/api/movements', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+      ])
+
+      setProducts(updatedProducts)
       setMovements(updatedMovements)
 
       window.dispatchEvent(new Event("upshop_data_updated"))
@@ -749,6 +698,8 @@ export default function StoreManagementPage() {
       })
     } catch (e) {
       toast({ variant: "destructive", title: "Error", description: "Failed to process received product." })
+    } finally {
+      setIsSubmittingIntake(false)
     }
   }
 
@@ -1099,9 +1050,15 @@ export default function StoreManagementPage() {
             <Button 
               className="w-full h-12 font-bold text-base bg-blue-700 hover:bg-blue-800 text-white shadow-md transition-all" 
               onClick={handleTransfer} 
-              disabled={!selectedProduct || computedTransferTotalUnits <= 0}
+              disabled={isSubmittingTransfer || !selectedProduct || computedTransferTotalUnits <= 0}
             >
-              Transfer to {transferDirection === 'whse-to-shop' ? 'Shop Floor' : 'Warehouse'}
+              {isSubmittingTransfer ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" /> Transferring Stock...
+                </span>
+              ) : (
+                `Transfer to ${transferDirection === 'whse-to-shop' ? 'Shop Floor' : 'Warehouse'}`
+              )}
             </Button>
           </CardFooter>
         </Card>
@@ -1167,25 +1124,6 @@ export default function StoreManagementPage() {
                   <Label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Tag className="h-4 w-4 text-primary" /> Product Type / Variation
                   </Label>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      setNewTypeData({
-                        productName: intakeData.productName,
-                        typeName: "",
-                        buyingPrice: intakeData.buyingPrice || "",
-                        price: intakeData.price || "",
-                        warehouseStock: "0",
-                        shopStock: "0"
-                      })
-                      setShowAddTypeModal(true)
-                    }}
-                    className="h-7 text-xs font-bold text-primary border-primary/30 hover:bg-primary/10 gap-1"
-                  >
-                    <PlusCircle className="h-3.5 w-3.5" /> + Add New Type
-                  </Button>
                 </div>
                 <div className="relative">
                   <Input 
@@ -1679,9 +1617,15 @@ export default function StoreManagementPage() {
             <Button 
               className="w-full h-14 font-black text-base uppercase tracking-wider bg-amber-600 hover:bg-amber-700 text-white shadow-lg transition-all" 
               onClick={handleIntake}
-              disabled={!intakeData.productName || computedTotalUnits <= 0}
+              disabled={isSubmittingIntake || !intakeData.productName || computedTotalUnits <= 0}
             >
-              Confirm Product Purchase & Arrival
+              {isSubmittingIntake ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" /> Processing Purchase...
+                </span>
+              ) : (
+                "Confirm Product Purchase & Arrival"
+              )}
             </Button>
           </CardFooter>
         </Card>
@@ -1909,98 +1853,6 @@ export default function StoreManagementPage() {
         </CardContent>
       </Card>
 
-      {/* [+ Add New Type] Inspector Modal */}
-      {showAddTypeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <Card role="dialog" className="w-full max-w-md border-none shadow-2xl bg-white dark:bg-slate-900 p-6 animate-in zoom-in-95 duration-200">
-            <CardHeader className="p-0 pb-4 border-b">
-              <CardTitle className="text-lg font-bold text-primary flex items-center gap-2">
-                <PlusCircle className="h-5 w-5 text-primary" />
-                Add New Product Type / Variation
-              </CardTitle>
-              <CardDescription className="text-xs text-slate-500 font-semibold mt-1">
-                Enter details for new type of &quot;{intakeData.productName || "Product"}&quot;
-              </CardDescription>
-            </CardHeader>
-            <div className="py-4 space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">Product Name *</Label>
-                <Input 
-                  value={newTypeData.productName} 
-                  onChange={(e) => setNewTypeData({ ...newTypeData, productName: e.target.value })}
-                  placeholder="Product Name" 
-                  className="h-10 text-xs font-semibold"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-primary">Type / Variation Name *</Label>
-                <Input 
-                  value={newTypeData.typeName} 
-                  onChange={(e) => setNewTypeData({ ...newTypeData, typeName: e.target.value })}
-                  placeholder="e.g. Standard, Pro, Hardcover, 600W" 
-                  className="h-10 text-xs font-bold text-primary"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold">Buying Price (Shs)</Label>
-                  <Input 
-                    type="number" 
-                    value={newTypeData.buyingPrice === "0" ? '' : newTypeData.buyingPrice} 
-                    onChange={(e) => setNewTypeData({ ...newTypeData, buyingPrice: e.target.value })}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0" 
-                    className="h-10 text-xs font-mono font-bold text-amber-700 dark:text-amber-400"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold">Selling Price (Shs)</Label>
-                  <Input 
-                    type="number" 
-                    value={newTypeData.price === "0" ? '' : newTypeData.price} 
-                    onChange={(e) => setNewTypeData({ ...newTypeData, price: e.target.value })}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0" 
-                    className="h-10 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold">Initial Warehouse Stock</Label>
-                  <Input 
-                    type="number" 
-                    value={newTypeData.warehouseStock === "0" ? '' : newTypeData.warehouseStock} 
-                    onChange={(e) => setNewTypeData({ ...newTypeData, warehouseStock: e.target.value })}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0" 
-                    className="h-10 text-xs font-bold"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold">Initial Shop Stock</Label>
-                  <Input 
-                    type="number" 
-                    value={newTypeData.shopStock === "0" ? '' : newTypeData.shopStock} 
-                    onChange={(e) => setNewTypeData({ ...newTypeData, shopStock: e.target.value })}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0" 
-                    className="h-10 text-xs font-bold"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <Button variant="outline" size="sm" onClick={() => setShowAddTypeModal(false)} className="h-9 font-semibold">
-                Cancel
-              </Button>
-              <Button size="sm" onClick={handleSaveNewType} className="h-9 bg-primary text-white font-bold px-4">
-                Save Product Type
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
     </div>
   )
 }

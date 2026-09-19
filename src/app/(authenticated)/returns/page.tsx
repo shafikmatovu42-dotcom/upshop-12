@@ -40,11 +40,13 @@ import { useAuth } from "@/lib/auth-context"
 import { format, parseISO } from "date-fns"
 import { printThermalReceipt } from "@/lib/print-receipt"
 import { getPeriodFromTimestamp } from "@/lib/utils"
+import { useSearchParams } from "next/navigation"
 import { getActiveRecordingDate } from "@/lib/backdate-utils"
 
 export default function ReturnsPage() {
   const { token } = useAuth()
   const { toast } = useToast()
+  const searchParams = useSearchParams()
 
   const [returnType, setReturnType] = useState<'inwards' | 'outwards'>('inwards')
 
@@ -95,6 +97,43 @@ export default function ReturnsPage() {
   useEffect(() => {
     fetchData()
   }, [token])
+
+  // Auto-fill from URL query parameters (e.g. when linked from Dashboard Recent Sales Inspector)
+  useEffect(() => {
+    const querySaleId = searchParams.get('saleId')
+    const querySearch = searchParams.get('search')
+    const queryProduct = searchParams.get('productName')
+
+    const q = querySaleId || querySearch || queryProduct
+    if (q) {
+      const cleanQ = q.trim()
+      setSearchInput(cleanQ)
+
+      if (sales && sales.length > 0) {
+        const match = sales.find((s: any) =>
+          s.id.toLowerCase().includes(cleanQ.toLowerCase().replace('#', '')) ||
+          (s.customerName && s.customerName.toLowerCase().includes(cleanQ.toLowerCase()))
+        )
+        if (match) {
+          const formattedMatch = {
+            id: match.id,
+            displayId: `#${match.id.slice(0, 8)}`,
+            title: match.customerName || 'Normal Customer',
+            subtitle: match.items?.map((it: any) => `${it.name} (x${it.quantity})`).join(', ') || 'Sale items',
+            date: match.timestamp,
+            items: match.items || [],
+            total: match.total,
+            raw: match
+          }
+          setVerifiedTransaction(formattedMatch)
+          if (match.items && match.items.length > 0) {
+            setSelectedProduct(match.items[0])
+            setReturnQuantity(1)
+          }
+        }
+      }
+    }
+  }, [searchParams, sales])
 
   // Reset verified transaction when return type changes
   useEffect(() => {

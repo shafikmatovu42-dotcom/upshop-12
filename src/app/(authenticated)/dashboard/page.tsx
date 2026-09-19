@@ -105,6 +105,8 @@ export default function DashboardPage() {
   const [detailsModalOpen, setDetailsModalOpen] = useState(false)
   const [detailsModalData, setDetailsModalData] = useState<any>(null)
   const [detailsModalType, setDetailsModalType] = useState<'sale' | 'debtor' | 'return' | 'creditor'>('sale')
+  const [debtorPayInput, setDebtorPayInput] = useState("")
+  const [creditorPayInput, setCreditorPayInput] = useState("")
 
   const [expiryDetailsModalOpen, setExpiryDetailsModalOpen] = useState(false)
   const [expiryDetailsProduct, setExpiryDetailsProduct] = useState<any>(null)
@@ -1298,6 +1300,28 @@ export default function DashboardPage() {
     }
   }
 
+  const handleSettleDebtor = async (saleId: string, amount: number) => {
+    try {
+      const response = await fetch('/api/debtors/pay', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ saleId, amount })
+      })
+      if (response.ok) {
+        toast({ title: "Payment Recorded", description: `Received Shs ${amount.toLocaleString()} from customer debt.` })
+        fetchData(false)
+        window.dispatchEvent(new Event("upshop_data_updated"))
+      } else {
+        throw new Error('Payment failed')
+      }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error", description: "Failed to record debtor payment." })
+    }
+  }
+
   const handleWeekChange = async (newWeek: string) => {
     try {
       const updated = await updateProfile({ currentWeek: newWeek })
@@ -2110,6 +2134,20 @@ export default function DashboardPage() {
                       </div>
                     )}
 
+                    {!isPaid && (
+                      <Button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleOpenDetails(notif, 'debtor');
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-5 shrink-0 w-full md:w-auto shadow-sm gap-1.5"
+                      >
+                        <CheckCircle2 className="h-4 w-4" /> Pay Debt
+                      </Button>
+                    )}
+
                     {isPaid && (
                       <Button
                         type="button"
@@ -2235,6 +2273,20 @@ export default function DashboardPage() {
                           </span>
                         )}
                       </div>
+                    )}
+
+                    {!isSettled && (
+                      <Button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleOpenDetails(c, 'creditor');
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 px-5 shrink-0 w-full md:w-auto shadow-sm gap-1.5"
+                      >
+                        <CheckCircle2 className="h-4 w-4" /> Pay Creditor
+                      </Button>
                     )}
 
                     {isSettled && (
@@ -2743,10 +2795,41 @@ export default function DashboardPage() {
                       </div>
                       <div className="flex justify-between border-t pt-2 font-bold">
                         <span className="text-slate-700">Outstanding Debt</span>
-                        <span className="text-red-600 font-mono">Shs {(detailsModalData.total - (detailsModalData.amountPaid || 0)).toLocaleString()}</span>
+                        <span className="text-red-600 font-mono">Shs {Math.max(0, (detailsModalData.total - (detailsModalData.amountPaid || 0))).toLocaleString()}</span>
                       </div>
                     </div>
                   </div>
+
+                  {/* Payment form inside Inspector */}
+                  {Math.max(0, (detailsModalData.total - (detailsModalData.amountPaid || 0))) > 0 && (
+                    <div className="space-y-2 p-4 bg-emerald-50/60 dark:bg-emerald-950/40 rounded-xl border border-emerald-200">
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-emerald-900 dark:text-emerald-300 uppercase">Pay / Receive Customer Debt</span>
+                        <span className="text-slate-500 font-mono">Max: Shs {Math.max(0, (detailsModalData.total - (detailsModalData.amountPaid || 0))).toLocaleString()}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          placeholder={`Enter amount (Max Shs ${Math.max(0, detailsModalData.total - (detailsModalData.amountPaid || 0)).toLocaleString()})`}
+                          value={debtorPayInput}
+                          onChange={(e) => setDebtorPayInput(e.target.value)}
+                          className="h-10 text-xs font-bold font-mono bg-white dark:bg-slate-800"
+                        />
+                        <Button
+                          type="button"
+                          onClick={async () => {
+                            const amt = Number(debtorPayInput) || Math.max(0, (detailsModalData.total - (detailsModalData.amountPaid || 0)))
+                            await handleSettleDebtor(detailsModalData.id, amt)
+                            setDetailsModalOpen(false)
+                            setDebtorPayInput("")
+                          }}
+                          className="h-10 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 gap-1.5 shrink-0 shadow-sm"
+                        >
+                          <CheckCircle2 className="h-4 w-4" /> Pay Debt
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <h5 className="font-bold text-xs uppercase text-slate-400">Items Purchased on Credit</h5>
@@ -2764,6 +2847,93 @@ export default function DashboardPage() {
                           </span>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {detailsModalType === 'creditor' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4 border-b pb-4 text-sm font-semibold">
+                    <div>
+                      <span className="text-xs text-muted-foreground block uppercase">Supplier Name</span>
+                      <span className="text-slate-800 font-bold">{detailsModalData.supplierName}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block uppercase">Due Date</span>
+                      <span className="text-slate-800 font-bold">
+                        {detailsModalData.dueDate ? format(parseISO(detailsModalData.dueDate), 'MMM dd, yyyy') : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="mt-2">
+                      <span className="text-xs text-muted-foreground block uppercase">Payment Status</span>
+                      <Badge className={(detailsModalData.status === 'settled' || (detailsModalData.totalAmount - (detailsModalData.amountPaid || 0)) <= 0) ? "bg-green-100 text-green-700 font-bold uppercase" : "bg-amber-100 text-amber-700 font-bold uppercase"}>
+                        {(detailsModalData.status === 'settled' || (detailsModalData.totalAmount - (detailsModalData.amountPaid || 0)) <= 0) ? "Settled" : "Unpaid Credit"}
+                      </Badge>
+                    </div>
+                    <div className="mt-2">
+                      <span className="text-xs text-muted-foreground block uppercase">Supplier Contact</span>
+                      <span className="text-slate-800 font-bold">{detailsModalData.supplierContact || 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-xs uppercase text-slate-400">Accounts Summary</h5>
+                    <div className="bg-slate-50 p-4 rounded-xl space-y-2 border text-sm font-semibold">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Total Purchase Bill</span>
+                        <span className="text-slate-800">Shs {(detailsModalData.totalAmount || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Amount Paid</span>
+                        <span className="text-green-600">Shs {(detailsModalData.amountPaid || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-2 font-bold">
+                        <span className="text-slate-700">Outstanding Balance Owed</span>
+                        <span className="text-amber-700 font-mono">Shs {Math.max(0, (detailsModalData.totalAmount || 0) - (detailsModalData.amountPaid || 0)).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment form inside Creditor Inspector */}
+                  {Math.max(0, (detailsModalData.totalAmount || 0) - (detailsModalData.amountPaid || 0)) > 0 && (
+                    <div className="space-y-2 p-4 bg-blue-50/60 dark:bg-blue-950/40 rounded-xl border border-blue-200">
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-blue-900 dark:text-blue-300 uppercase">Pay / Settle Supplier Credit</span>
+                        <span className="text-slate-500 font-mono">Max: Shs {Math.max(0, (detailsModalData.totalAmount || 0) - (detailsModalData.amountPaid || 0)).toLocaleString()}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          placeholder={`Enter amount (Max Shs ${Math.max(0, detailsModalData.totalAmount - (detailsModalData.amountPaid || 0)).toLocaleString()})`}
+                          value={creditorPayInput}
+                          onChange={(e) => setCreditorPayInput(e.target.value)}
+                          className="h-10 text-xs font-bold font-mono bg-white dark:bg-slate-800"
+                        />
+                        <Button
+                          type="button"
+                          onClick={async () => {
+                            const amt = Number(creditorPayInput) || Math.max(0, (detailsModalData.totalAmount || 0) - (detailsModalData.amountPaid || 0))
+                            await handleSettleCreditor(detailsModalData.id, amt)
+                            setDetailsModalOpen(false)
+                            setCreditorPayInput("")
+                          }}
+                          className="h-10 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 gap-1.5 shrink-0 shadow-sm"
+                        >
+                          <CheckCircle2 className="h-4 w-4" /> Pay Creditor
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-xs uppercase text-slate-400">Product Purchased</h5>
+                    <div className="p-3 border rounded-xl bg-slate-50/50 text-sm flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-slate-800">{detailsModalData.productName}</p>
+                        <p className="text-xs text-muted-foreground font-semibold">Quantity: {detailsModalData.quantity} {detailsModalData.unitType || 'units'}</p>
+                      </div>
+                      <span className="font-bold text-slate-800">Shs {(detailsModalData.totalAmount || 0).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -2822,10 +2992,50 @@ export default function DashboardPage() {
                 </div>
               )}
             </CardContent>
-            <div className="border-t p-4 bg-slate-50 flex justify-end">
+            <div className="border-t p-4 bg-slate-50 dark:bg-slate-800/50 flex flex-wrap justify-end gap-2">
+              {detailsModalType === 'sale' && (
+                <Button
+                  onClick={() => {
+                    setDetailsModalOpen(false)
+                    const saleId = detailsModalData.saleId || detailsModalData.id
+                    const searchVal = encodeURIComponent(saleId)
+                    router.push(`/returns?saleId=${saleId}&search=${searchVal}`)
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold h-10 px-5 gap-1.5 shadow-sm"
+                >
+                  <RotateCcw className="h-4 w-4" /> Return Product
+                </Button>
+              )}
+              {detailsModalType === 'debtor' && Math.max(0, (detailsModalData.total || 0) - (detailsModalData.amountPaid || 0)) > 0 && (
+                <Button
+                  onClick={async () => {
+                    const amt = Number(debtorPayInput) || Math.max(0, (detailsModalData.total - (detailsModalData.amountPaid || 0)))
+                    await handleSettleDebtor(detailsModalData.id, amt)
+                    setDetailsModalOpen(false)
+                    setDebtorPayInput("")
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-5 gap-1.5 shadow-sm"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Pay Debt
+                </Button>
+              )}
+              {detailsModalType === 'creditor' && Math.max(0, (detailsModalData.totalAmount || 0) - (detailsModalData.amountPaid || 0)) > 0 && (
+                <Button
+                  onClick={async () => {
+                    const amt = Number(creditorPayInput) || Math.max(0, (detailsModalData.totalAmount || 0) - (detailsModalData.amountPaid || 0))
+                    await handleSettleCreditor(detailsModalData.id, amt)
+                    setDetailsModalOpen(false)
+                    setCreditorPayInput("")
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 px-5 gap-1.5 shadow-sm"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Pay Creditor
+                </Button>
+              )}
               <Button 
                 onClick={() => setDetailsModalOpen(false)}
-                className="bg-primary hover:bg-primary/95 text-white font-bold h-10 px-6"
+                variant="outline"
+                className="font-bold h-10 px-6"
               >
                 Close Inspector
               </Button>
