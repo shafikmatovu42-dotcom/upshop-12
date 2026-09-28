@@ -364,32 +364,6 @@ export default function SalesPage() {
 
       const saleData = saleResponse.ok ? await saleResponse.json() : null
 
-      // If credit/hybrid transaction, auto register Creditor liability record
-      if (hasAnyCredit) {
-        const creditProductSummary = creditItems.map(i => `${i.name} (x${getCartQuantity(i.id)})`).join(', ')
-        const totalCreditQty = creditItems.reduce((acc, i) => acc + getCartQuantity(i.id), 0)
-
-        await fetch('/api/creditors', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            supplierName: customerName.trim(),
-            supplierContact: "",
-            productName: creditProductSummary,
-            quantity: totalCreditQty,
-            unitType: "pieces",
-            buyingPrice: 0,
-            totalAmount: totalCreditAmount,
-            paymentMode: "credit",
-            paymentDays: dueDays,
-            dueDate: calculatedDueDate
-          })
-        })
-      }
-
       // Update product stock for each item sold
       for (const item of cart) {
         const requiredPieces = getCartQuantity(item.id)

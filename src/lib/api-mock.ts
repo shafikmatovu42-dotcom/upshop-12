@@ -804,6 +804,62 @@ export async function handleMockRequest(url: string, init?: RequestInit): Promis
       return createJsonResponse({ success: true });
     }
 
+    if (path === '/api/creditors' && method === 'DELETE') {
+      const { creditorId } = getBody();
+      if (!creditorId) return createErrorResponse('Missing creditorId', 400);
+      await db.deleteCreditor(creditorId);
+      return createJsonResponse({ success: true });
+    }
+
+    // 6d. Notes & Notebook API
+    if (path === '/api/notes' && method === 'GET') {
+      const notes = await db.getUserNotes(userId);
+      return createJsonResponse(notes);
+    }
+
+    if (path === '/api/notes' && method === 'POST') {
+      const body = getBody();
+      const { title, content, tags, category, isPinned, dueDate } = body;
+      if (!title || !content) {
+        return createErrorResponse('Title and content are required for a note', 400);
+      }
+      const noteId = `NOTE-${Math.floor(10000 + Math.random() * 90000)}`;
+      const now = new Date().toISOString();
+      const note = {
+        id: noteId,
+        userId,
+        title,
+        content,
+        tags: tags || '',
+        category: category || 'general',
+        isPinned: isPinned ? 1 : 0,
+        status: 'active',
+        dueDate: dueDate || null,
+        timestamp: now
+      };
+      await db.saveNote(note);
+      return createJsonResponse(note, 201);
+    }
+
+    if (path.startsWith('/api/notes/') && method === 'PUT') {
+      const parts = path.split('/');
+      const id = parts[parts.length - 1];
+      const body = getBody();
+      const existingNotes = await db.getUserNotes(userId);
+      const existing = existingNotes.find(n => n.id === id);
+      if (!existing) return createErrorResponse('Note not found', 404);
+      const updated = { ...existing, ...body, timestamp: new Date().toISOString() };
+      await db.saveNote(updated);
+      return createJsonResponse(updated);
+    }
+
+    if (path.startsWith('/api/notes/') && method === 'DELETE') {
+      const parts = path.split('/');
+      const id = parts[parts.length - 1];
+      await db.deleteNote(id);
+      return createJsonResponse({ success: true });
+    }
+
     // 7. Sales
     if (path === '/api/sales' && method === 'GET') {
       const sales = await db.getUserSales(userId);

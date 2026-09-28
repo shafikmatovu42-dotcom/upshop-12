@@ -210,6 +210,22 @@ export async function getDb(): Promise<Database> {
         )
       `);
 
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS notes (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          tags TEXT,
+          category TEXT DEFAULT 'general',
+          isPinned INTEGER DEFAULT 0,
+          status TEXT DEFAULT 'active',
+          dueDate TEXT,
+          timestamp TEXT NOT NULL,
+          FOREIGN KEY(userId) REFERENCES users(id)
+        )
+      `);
+
       // Dynamic check for any missing columns
       try {
         const userColumns = await db.select<any[]>("PRAGMA table_info(users)");
@@ -625,6 +641,16 @@ export async function dismissCreditorNotification(creditorId: string) {
   }
   const db = await getDb();
   await db.execute('UPDATE creditors SET dismissed = 1 WHERE id = ?', [creditorId]);
+}
+
+export async function deleteCreditor(creditorId: string) {
+  if (!isTauri) {
+    const creditors = getLocalStorageItem<any>('upshop_creditors');
+    setLocalStorageItem('upshop_creditors', creditors.filter(c => c.id !== creditorId));
+    return;
+  }
+  const db = await getDb();
+  await db.execute('DELETE FROM creditors WHERE id = ?', [creditorId]);
 }
 
 export async function savePartner(partner: any) {
@@ -1452,5 +1478,61 @@ export async function deleteProduct(productId: string) {
   const db = await getDb();
   await db.execute('DELETE FROM products WHERE id = ?', [productId]);
 }
+
+export async function saveNote(note: any) {
+  if (!isTauri) {
+    const notes = getLocalStorageItem<any>('upshop_notes');
+    const idx = notes.findIndex(n => n.id === note.id);
+    const item = {
+      ...note,
+      isPinned: note.isPinned ? 1 : 0,
+      status: note.status || 'active'
+    };
+    if (idx > -1) {
+      notes[idx] = item;
+    } else {
+      notes.unshift(item);
+    }
+    setLocalStorageItem('upshop_notes', notes);
+    return;
+  }
+  const db = await getDb();
+  const existing = await db.select<any[]>('SELECT id FROM notes WHERE id = ?', [note.id]);
+  if (existing.length > 0) {
+    await db.execute(
+      `UPDATE notes SET title = ?, content = ?, tags = ?, category = ?, isPinned = ?, status = ?, dueDate = ?, timestamp = ? WHERE id = ?`,
+      [note.title, note.content, note.tags || '', note.category || 'general', note.isPinned ? 1 : 0, note.status || 'active', note.dueDate || null, note.timestamp || new Date().toISOString(), note.id]
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO notes (id, userId, title, content, tags, category, isPinned, status, dueDate, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [note.id, note.userId, note.title, note.content, note.tags || '', note.category || 'general', note.isPinned ? 1 : 0, note.status || 'active', note.dueDate || null, note.timestamp || new Date().toISOString()]
+    );
+  }
+}
+
+export async function getUserNotes(userId: string) {
+  if (!isTauri) {
+    const notes = getLocalStorageItem<any>('upshop_notes');
+    return notes
+      .filter(n => n.userId === userId)
+      .map(n => ({ ...n, isPinned: !!n.isPinned }))
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+  const db = await getDb();
+  const rows = await db.select<any[]>('SELECT * FROM notes WHERE userId = ? ORDER BY isPinned DESC, timestamp DESC', [userId]);
+  return rows.map(n => ({ ...n, isPinned: !!n.isPinned }));
+}
+
+export async function deleteNote(noteId: string) {
+  if (!isTauri) {
+    const notes = getLocalStorageItem<any>('upshop_notes');
+    setLocalStorageItem('upshop_notes', notes.filter(n => n.id !== noteId));
+    return;
+  }
+  const db = await getDb();
+  await db.execute('DELETE FROM notes WHERE id = ?', [noteId]);
+}
+
 
 

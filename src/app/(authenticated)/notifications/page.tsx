@@ -54,6 +54,7 @@ import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { printThermalReceipt } from "@/lib/print-receipt"
 import { getPeriodFromTimestamp } from "@/lib/utils"
+import { calculateInventoryPredictions, ModelType } from "@/lib/predictive-analytics"
 
 export default function NotificationsPage() {
   const { user, token } = useAuth()
@@ -99,13 +100,16 @@ export default function NotificationsPage() {
   const [generatingReports, setGeneratingReports] = useState(false)
   
   const [debtorSearch, setDebtorSearch] = useState("")
-  const [debtorPeriodFilter, setDebtorPeriodFilter] = useState("today")
+  const [debtorPeriodFilter, setDebtorPeriodFilter] = useState("last_month")
 
   const [expensesSearch, setExpensesSearch] = useState("")
-  const [expensesPeriodFilter, setExpensesPeriodFilter] = useState("today")
+  const [expensesPeriodFilter, setExpensesPeriodFilter] = useState("last_month")
 
   const [inflowsSearch, setInflowsSearch] = useState("")
-  const [inflowsPeriodFilter, setInflowsPeriodFilter] = useState("today")
+  const [inflowsPeriodFilter, setInflowsPeriodFilter] = useState("last_month")
+
+  const [notes, setNotes] = useState<any[]>([])
+  const [activePredictionModel, setActivePredictionModel] = useState<ModelType>("HWES")
 
   const [loading, setLoading] = useState(true)
 
@@ -148,7 +152,7 @@ export default function NotificationsPage() {
 
   // Creditor payment state
   const [creditorSearch, setCreditorSearch] = useState("")
-  const [creditorPeriodFilter, setCreditorPeriodFilter] = useState("today")
+  const [creditorPeriodFilter, setCreditorPeriodFilter] = useState("last_month")
   const [activeCreditor, setActiveCreditor] = useState<any>(null)
   const [creditorPaymentInput, setCreditorPaymentInput] = useState("")
 
@@ -201,6 +205,14 @@ export default function NotificationsPage() {
       })
       if (creditorsResponse.ok) {
         setCreditors(await creditorsResponse.json())
+      }
+
+      // Fetch notes
+      const notesResponse = await fetch('/api/notes', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (notesResponse.ok) {
+        setNotes(await notesResponse.json())
       }
     } catch (error) {
       console.error('Failed to fetch data:', error)
@@ -785,10 +797,31 @@ export default function NotificationsPage() {
       if (daysOld <= 100 && !dismissedAlerts.includes(alertKey)) {
         list.push({
           id: alertKey,
-          type: 'warning',
+          type: p.shopStock <= 0 ? 'danger' : 'warning',
           timestamp: p.updatedAt || today.toISOString(),
-          message: `Low Stock: "${p.name}" has only ${p.shopStock} items left on the Shop Floor. (Limit: ${p.minStockLevel || 5})`
+          message: p.shopStock <= 0
+            ? `CRITICAL OUT OF STOCK: "${p.name}" has 0 stock remaining on Shop Floor!`
+            : `Low Stock: "${p.name}" has only ${p.shopStock} items left on the Shop Floor. (Limit: ${p.minStockLevel || 5})`
         })
+      }
+
+      // Expiry alerts for products with expiry date within 30 days
+      if (p.expiryDate) {
+        try {
+          const exp = parseISO(p.expiryDate)
+          const daysToExpire = differenceInDays(exp, today)
+          const expKey = `expiry_${p.id}`
+          if (daysToExpire <= 30 && !dismissedAlerts.includes(expKey)) {
+            list.push({
+              id: expKey,
+              type: daysToExpire <= 7 ? 'danger' : 'warning',
+              timestamp: p.expiryDate,
+              message: daysToExpire < 0
+                ? `EXPIRED STOCK WARNING: "${p.name}" expired ${Math.abs(daysToExpire)} days ago! Please remove from Shop Floor.`
+                : `Item Nearing Expiry: "${p.name}" will expire in ${daysToExpire} day(s) (${p.expiryDate}).`
+            })
+          }
+        } catch (e) {}
       }
     })
 
@@ -808,7 +841,7 @@ export default function NotificationsPage() {
                 id: alertKey,
                 type: 'danger',
                 timestamp: d.timestamp || today.toISOString(),
-                message: `Overdue Payment: ${d.customerName} owes Shs ${(d.total - d.amountPaid).toLocaleString()} (due ${daysOverdue} days ago).`
+                message: `Overdue Customer Payment: ${d.customerName} owes Shs ${(d.total - d.amountPaid).toLocaleString()} (due ${daysOverdue} days ago).`
               })
             }
           } else {
@@ -820,7 +853,7 @@ export default function NotificationsPage() {
                   id: alertKey,
                   type: 'info',
                   timestamp: d.timestamp || today.toISOString(),
-                  message: `Upcoming Payment: ${d.customerName} owes Shs ${(d.total - d.amountPaid).toLocaleString()} (due in ${daysLeft} days).`
+                  message: `Upcoming Customer Debt: ${d.customerName} owes Shs ${(d.total - d.amountPaid).toLocaleString()} (due in ${daysLeft} days).`
                 })
               }
             }
@@ -829,8 +862,22 @@ export default function NotificationsPage() {
       }
     })
 
+    // 3. Creditors due
+    creditors.filter(c => c.status !== 'settled').forEach(c => {
+      const alertKey = `creditor_due_${c.id}`
+      if (!dismissedAlerts.includes(alertKey)) {
+        const debt = (c.totalAmount || 0) - (c.amountPaid || 0)
+        list.push({
+          id: alertKey,
+          type: 'warning',
+          timestamp: c.timestamp || today.toISOString(),
+          message: `Pending Supplier Creditor Bill: You owe ${c.supplierName} Shs ${debt.toLocaleString()} for "${c.productName}".`
+        })
+      }
+    })
+
     return list
-  }, [products, debtors, dismissedAlerts])
+  }, [products, debtors, creditors, dismissedAlerts])
 
   const generateReportDocument = (
     docId: string,
@@ -1364,6 +1411,137 @@ export default function NotificationsPage() {
         </Card>
       </div>
 
+      {/* SECTION 1B (NEW): Predictive Inventory Analytics & Demand Forecasting */}
+      <Card className="border-none shadow-xl bg-white overflow-hidden border-l-4 border-l-cyan-600">
+        <CardHeader className="bg-slate-900 text-white p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <CardTitle className="text-xl font-bold flex items-center gap-2 text-cyan-400">
+                <Sparkles className="h-6 w-6 text-cyan-400" />
+                Predictive Inventory Analytics & Demand Forecasting
+              </CardTitle>
+              <CardDescription className="text-slate-300 text-xs">
+                Real-time ML demand velocity model comparing <strong>Actual Total Count</strong> vs <strong>Predicted Total Count</strong> for 14-day stock planning.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Active Prediction Model:</span>
+              <Select value={activePredictionModel} onValueChange={(v) => setActivePredictionModel(v as ModelType)}>
+                <SelectTrigger className="w-[300px] h-10 bg-slate-800 border-slate-700 text-white font-bold text-xs">
+                  <SelectValue placeholder="Select Algorithm" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 text-white border-slate-700">
+                  <SelectItem value="HWES" className="text-xs font-bold">Holt-Winters Exponential Smoothing (HWES)</SelectItem>
+                  <SelectItem value="WMA" className="text-xs font-bold">Weighted Moving Average (WMA 30-Day)</SelectItem>
+                  <SelectItem value="LSV" className="text-xs font-bold">Linear Daily Sales Velocity (LSV)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="mt-3 inline-flex items-center gap-2 bg-cyan-950/80 border border-cyan-800/50 text-cyan-300 px-3 py-1 rounded-full text-xs font-bold font-mono">
+            <span>⚙️ Model Configured:</span> {calculateInventoryPredictions(products, sales, activePredictionModel, 14).activeModelName}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-100 dark:bg-slate-800">
+                <TableHead className="font-extrabold text-xs uppercase text-slate-700 dark:text-slate-300">Product Name</TableHead>
+                <TableHead className="font-extrabold text-xs uppercase text-slate-700 dark:text-slate-300">Category</TableHead>
+                <TableHead className="text-center font-extrabold text-xs uppercase text-slate-700 dark:text-slate-300">Actual Total Count</TableHead>
+                <TableHead className="text-center font-extrabold text-xs uppercase text-slate-700 dark:text-slate-300">Predicted 14d Count</TableHead>
+                <TableHead className="text-center font-extrabold text-xs uppercase text-slate-700 dark:text-slate-300">Daily Velocity</TableHead>
+                <TableHead className="text-center font-extrabold text-xs uppercase text-slate-700 dark:text-slate-300">Days to Stockout</TableHead>
+                <TableHead className="text-center font-extrabold text-xs uppercase text-slate-700 dark:text-slate-300">Suggested Reorder</TableHead>
+                <TableHead className="text-right font-extrabold text-xs uppercase text-slate-700 dark:text-slate-300">Stock Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {calculateInventoryPredictions(products, sales, activePredictionModel, 14).predictions.slice(0, 15).map((pred) => (
+                <TableRow key={pred.productId} className="hover:bg-slate-50 transition-colors">
+                  <TableCell className="font-extrabold text-sm text-slate-900">{pred.productName}</TableCell>
+                  <TableCell><Badge variant="outline" className="font-bold text-xs">{pred.category}</Badge></TableCell>
+                  <TableCell className="text-center font-mono font-black text-sm text-slate-900">{pred.actualTotalCount} <span className="text-[10px] text-slate-400 font-normal">({pred.shopStock} shop / {pred.warehouseStock} wh)</span></TableCell>
+                  <TableCell className="text-center font-mono font-black text-sm text-indigo-700">{pred.predictedTotalCount}</TableCell>
+                  <TableCell className="text-center font-mono font-bold text-xs text-slate-600">{pred.dailyVelocity} units/day</TableCell>
+                  <TableCell className="text-center font-bold text-xs">
+                    {pred.daysUntilStockout !== null ? (
+                      <span className={pred.daysUntilStockout <= 3 ? "text-rose-600 font-black" : "text-slate-700"}>{pred.daysUntilStockout} day(s)</span>
+                    ) : (
+                      <span className="text-slate-400">Stable</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center font-mono font-bold text-xs text-emerald-700">
+                    {pred.reorderRecommendation > 0 ? `+${pred.reorderRecommendation} units` : "Sufficient"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {pred.urgency === 'critical' ? (
+                      <Badge className="bg-rose-600 text-white font-black text-[10px] uppercase">Reorder Now</Badge>
+                    ) : pred.urgency === 'warning' ? (
+                      <Badge className="bg-amber-500 text-white font-bold text-[10px] uppercase">Watch Stock</Badge>
+                    ) : (
+                      <Badge className="bg-emerald-600 text-white font-bold text-[10px] uppercase">Healthy</Badge>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* SECTION 1C (NEW): AI-Powered Business Notebook */}
+      <Card className="border-none shadow-xl bg-white overflow-hidden border-l-4 border-l-purple-600">
+        <CardHeader className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <CardTitle className="text-xl font-bold flex items-center gap-2 text-purple-300">
+                <FileText className="h-6 w-6 text-purple-400" />
+                AI-Powered Business Notebook (Read, Write & Store)
+              </CardTitle>
+              <CardDescription className="text-slate-300 text-xs">
+                Digital intelligent scratchpad interlinked with JAHWI AI to store reminders, supplier agreements, and debtor context.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {notes.length === 0 ? (
+              <div className="col-span-3 text-center py-10 bg-slate-50 rounded-2xl border border-dashed text-slate-500 font-bold">
+                No notes in your Business Notebook yet. You can ask JAHWI AI to write a note (e.g., "Jahwi, write a note that Mama Kevin promised to pay Friday"), or create one via API!
+              </div>
+            ) : (
+              notes.map((note) => (
+                <div key={note.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors shadow-sm flex flex-col justify-between space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <span className="font-extrabold text-sm text-slate-900 truncate">{note.title}</span>
+                      <Badge variant="outline" className="text-[10px] uppercase font-bold text-purple-700 bg-purple-50 border-purple-200">{note.category}</Badge>
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium whitespace-pre-wrap leading-relaxed">{note.content}</p>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t text-[10px] text-slate-400 font-bold">
+                    <span>{new Date(note.timestamp).toLocaleDateString()}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        await fetch(`/api/notes/${note.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
+                        fetchData()
+                        toast({ title: 'Note Removed', description: 'Deleted note from Business Notebook.' })
+                      }}
+                      className="h-6 w-6 p-0 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-full"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* SECTION 2 (NEW): Expenses & Outflows Section */}
       <Card className="border-none shadow-xl bg-white overflow-hidden border-l-4 border-l-rose-600">
@@ -1840,12 +2018,31 @@ export default function NotificationsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            onClick={() => setActiveCreditor(creditor)}
-                            className="h-8 px-4 bg-amber-600 text-white hover:bg-amber-700 text-xs font-bold shadow-sm"
-                          >
-                            <DollarSign className="h-3 w-3 mr-1" /> Pay Supplier
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              onClick={() => setActiveCreditor(creditor)}
+                              className="h-8 px-3 bg-amber-600 text-white hover:bg-amber-700 text-xs font-bold shadow-sm"
+                            >
+                              <DollarSign className="h-3 w-3 mr-1" /> Pay
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                await fetch('/api/creditors', {
+                                  method: 'DELETE',
+                                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                  body: JSON.stringify({ creditorId: creditor.id })
+                                })
+                                fetchData()
+                                toast({ title: 'Creditor Removed', description: 'Deleted creditor record.' })
+                              }}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 border-slate-200"
+                              title="Delete invalid creditor record"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
