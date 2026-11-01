@@ -1,5 +1,4 @@
-# Firebase Studio
-
-This is a NextJS starter in Firebase Studio.
-
-To get started, take a look at src/app/page.tsx.
+# UPSHOP:
+ this is a business application that can help with daytoday activities all the way from 
+ recording sales, to managing   stock.
+ it has an inbuilt ai asistant capable of giving realtime help to the user.
